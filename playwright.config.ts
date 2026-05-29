@@ -19,7 +19,10 @@ export default defineConfig({
   reporter: [["html", { open: "never" }]],
 
   use: {
-    baseURL: process.env.BASE_URL || "https://gorest.co.in/public/v2",
+    // Origin only — services carry the full `/public/v2/<resource>` path.
+    // See fixtures/index.ts for the WHATWG URL resolution gotcha that forced
+    // this convention.
+    baseURL: process.env.BASE_URL || "https://gorest.co.in",
   },
 
   projects: [
