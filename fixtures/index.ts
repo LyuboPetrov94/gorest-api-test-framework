@@ -9,7 +9,11 @@ import { test as base, APIRequestContext, request } from "@playwright/test";
  * within the project's namespace — see tests/api/CLAUDE.md decisions #1, #2, #4.
  */
 
-export const BASE_URL = process.env.BASE_URL || "https://gorest.co.in/public/v2";
+// Origin only — service classes carry the full `/public/v2/<resource>` path
+// per the API Conventions in tests/api/CLAUDE.md. Including `/public/v2` here
+// would break WHATWG URL resolution: paths starting with `/` would replace
+// the base path, not append it (verified empirically during initial probe).
+export const BASE_URL = process.env.BASE_URL || "https://gorest.co.in";
 
 // Token from .env (loaded by playwright.config.ts via dotenv). Fail loudly
 // at module load time if missing — better than mysterious 401s in every test.
