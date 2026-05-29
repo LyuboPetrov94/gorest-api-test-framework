@@ -91,9 +91,25 @@ Adopt `zod` v4.x if schema validation is in scope. Conventions:
 
 ## Known Gotchas
 
-<!-- Gotcha catalogue — empty at start. Fills as we probe the API and find behaviors that contradict the spec or HTTP conventions. Format below: -->
+Gotcha catalogue — fills as we probe the API and find behaviors that contradict the spec or HTTP conventions. Entries below were discovered during the initial `/users` probe (2026-05-29).
 
-<!-- - **<Short title>**: <One-paragraph description of the gotcha, including the discovered behavior, why it's surprising (vs spec / vs REST best practice / vs intuition), the test design implication, and the assertion shape that locks it.> -->
+- **`baseURL` must be origin-only — paths carry the `/public/v2/` prefix**: WHATWG URL resolution treats request paths starting with `/` as absolute relative to origin, REPLACING the base path. `new URL("/users", "https://gorest.co.in/public/v2")` resolves to `https://gorest.co.in/users` (which is the marketing site's 404 page), NOT `https://gorest.co.in/public/v2/users`. Both `fixtures/index.ts` `BASE_URL` and `playwright.config.ts` `use.baseURL` are set to `https://gorest.co.in`; service classes carry the full `/public/v2/<resource>` prefix. This convention is already documented under "API Conventions" — this gotcha entry exists because we violated it on first attempt and got 404 HTML responses.
+
+- **GET endpoints are publicly accessible — auth gate applies to write verbs only**: GoRest's docs imply Bearer token is required everywhere, but empirically `GET /users` returns 200 with no Authorization header. Token validation only triggers when a token is *sent* (see next gotcha). Test design implication: auth-gate negatives (no-token / invalid-token EP classes) are meaningful on POST/PATCH/PUT/DELETE but partially redundant on GETs. For GETs, document the "anonymous works" behavior as a TC (it's a positive contract worth pinning), and don't expect 401 on missing token.
+
+- **Bogus token returns 401 even on public endpoints**: Sending `Authorization: Bearer deadbeef` to `GET /users` returns 401 `{ "message": "Invalid token" }` even though the same endpoint returns 200 with no Authorization header at all. GoRest validates tokens whenever one is presented, regardless of endpoint requirements. Test design implication: the two auth-gate EP classes (no-token / invalid-token) diverge on a *per-endpoint* basis — for GETs they produce 200 vs 401, for writes they likely both produce 401. Pin both classes; document the divergence.
+
+- **Rate-limit headers (`x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-reset`) appear only on authenticated requests**: Anonymous GETs do not include them. Rate-limit testing must be done with the Bearer token attached. Assertion shape: `expect(Number(response.headers()["x-ratelimit-remaining"])).toBeLessThan(90)` etc., guarded by an auth-required call.
+
+- **No response envelope — pagination is in headers**: GoRest returns the bare resource (array for lists, object for single items) in the body. Pagination metadata is in response headers (`x-pagination-limit/page/pages/total`), navigation links in `x-links-current/next/previous` (the latter is empty string on page 1). No `{ data: ..., meta: ... }` wrapping like v1 had. Assertions target the body directly (`body[0].id`, not `body.data[0].id`).
+
+- **`id` is a JavaScript number (int64-shaped), not a string**: GoRest returns `id` as a number like `8481864`. Contrast with the prior project's Notes API which returned 24-char hex ObjectId strings. Assert with `expect.any(Number)` or a `> 0` integer check; never `expect.any(String)` and never a regex.
+
+- **POST returns 201, DELETE returns 204 with empty body**: RFC-correct REST semantics, unlike the prior Notes API (POST=200, DELETE=200+JSON). POST body echoes the created resource including server-assigned `id`. DELETE returns no body at all — `response.text()` returns empty string, `response.json()` would throw. Assert status only on DELETE.
+
+- **404 envelope is `{ "message": "Resource not found" }`**: Consistent JSON shape across not-found cases. Safe to `await response.json()` on 404 responses; `body.message` is the field to pin.
+
+- **`PUT /users/{id}` is loose — behaves identically to `PATCH /users/{id}`**: Standard REST says PUT means full replacement (sending a subset should be 422 or wipe unsent fields to defaults). GoRest's PUT accepts partial bodies, preserves unsent fields, and returns 200. Probed empirically 2026-05-29: PUT with `{ name }`, with `{}`, and with `{ name, email }` all returned 200 with only the supplied fields changed and the rest preserved. Test design implications: (1) the verbs are functionally equivalent on this API — TC05 (PUT all-4) and TC06 (PATCH partial) document both verbs work but do *not* prove distinct semantics; (2) **do not write a "PUT requires field X" validation TC** — it's not true; (3) `UpdateUserPayload` in `services/UsersService.ts` keeps all fields required as a *defensive convention* (forces callers to think about full state at the call site, encodes the standard REST intent in TypeScript), even though the API is more permissive — TS is stricter than the server here on purpose, per portfolio framing (decision #5: lean toward defense-in-depth).
 
 ## API-Specific What NOT to Do
 - Do not write endpoint paths or HTTP verbs directly in spec files — abstract through service wrappers in `services/`.
