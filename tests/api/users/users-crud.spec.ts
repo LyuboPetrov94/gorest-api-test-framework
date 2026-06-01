@@ -13,14 +13,14 @@ test.describe("Users - CRUD happy paths", () => {
   test.afterEach(async ({ authedRequest }) => {
     const users = new UsersService(authedRequest);
     for (const id of createdIds) {
-      // Best-effort — TC07 already deletes its own resource; second DELETE
+      // Best-effort - TC07 already deletes its own resource; second DELETE
       // returns 404, doesn't throw. `.catch(() => {})` only handles network errors.
       await users.deleteById(id).catch(() => {});
     }
   });
 
   test("TC01 - GET /users (anonymous) - 200, 5-field shape, default page 10", async () => {
-    // Anonymous context — no Authorization header. Per the gotcha catalogue,
+    // Anonymous context - no Authorization header. Per the gotcha catalogue,
     // GoRest's GET endpoints are publicly accessible even without a token.
     const ctx = await playwrightRequest.newContext({ baseURL: BASE_URL });
     try {
@@ -49,7 +49,7 @@ test.describe("Users - CRUD happy paths", () => {
         "status",
       ]);
 
-      // Types — id is Number per gotcha (not String, not regex)
+      // Types - id is Number per gotcha (not String, not regex)
       expect(first.id).toEqual(expect.any(Number));
       expect(first.id).toBeGreaterThan(0);
       expect(typeof first.name).toBe("string");
@@ -79,7 +79,7 @@ test.describe("Users - CRUD happy paths", () => {
     expect(Number.isFinite(remaining)).toBe(true);
     expect(Number.isFinite(reset)).toBe(true);
     expect(limit).toBeGreaterThan(0);
-    // Loose check — at least this request consumed a quota slot. Other parallel
+    // Loose check - at least this request consumed a quota slot. Other parallel
     // tests on the same worker may have consumed more; we don't pin an exact value.
     expect(remaining).toBeLessThan(limit);
 
@@ -110,7 +110,7 @@ test.describe("Users - CRUD happy paths", () => {
     const res = await users.create(payload);
     const body = await res.json();
 
-    // Push for cleanup BEFORE assertions — a failing assertion below should
+    // Push for cleanup BEFORE assertions - a failing assertion below should
     // still leave a deleteable id behind. Same pattern as prior project notes-crud.
     if (body?.id) createdIds.push(body.id);
 
@@ -145,11 +145,11 @@ test.describe("Users - CRUD happy paths", () => {
     expect(getRes.status()).toBe(200);
     const getBody = await getRes.json();
 
-    // Deep equality — GoRest returns the same shape from GET as from POST
+    // Deep equality - GoRest returns the same shape from GET as from POST
     expect(getBody).toEqual(createBody);
   });
 
-  // TC05 + TC06 note: GoRest's PUT is loose (behaves like PATCH — accepts
+  // TC05 + TC06 note: GoRest's PUT is loose (behaves like PATCH - accepts
   // partials, preserves unsent fields). Per the gotcha catalogue. Both TCs
   // exist for verb-coverage; they don't prove distinct semantics on this API.
 
@@ -261,7 +261,7 @@ test.describe("Users - CRUD happy paths", () => {
     // and "pages reports stale total" regressions.
     expect(pages).toBe(Math.ceil(total / limit));
 
-    // Link headers — `x-links-previous` is empty string on page 1, don't assert it
+    // Link headers - `x-links-previous` is empty string on page 1, don't assert it
     expect(headers["x-links-current"]).toMatch(/[?&]page=1\b/);
     expect(headers["x-links-next"]).toBeTruthy();
   });
