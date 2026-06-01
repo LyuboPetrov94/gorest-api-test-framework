@@ -3,7 +3,7 @@ import * as dotenv from "dotenv";
 
 // Load GOREST_TOKEN from .env at config load time. .env is gitignored;
 // .env.example is committed. See CLAUDE.md for token acquisition steps.
-dotenv.config();
+dotenv.config({ quiet: true });
 
 export default defineConfig({
   testDir: "./tests",
