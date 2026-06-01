@@ -1,5 +1,5 @@
 /**
- * Test data helpers — generate random/unique values for GoRest.
+ * Test data helpers - generate random/unique values for GoRest.
  *
  * GoRest User resource needs name + email + gender + status. Generate
  * randoms here; specs compose them into payloads. Add more helpers per

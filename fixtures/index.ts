@@ -6,17 +6,17 @@ import { test as base, APIRequestContext, request } from "@playwright/test";
  * GoRest uses Bearer-token auth (Authorization: Bearer <token>). The token
  * is account-bound (not per-user-created), so the same token serves every
  * test. Per-token data isolation means cleanup and parallelism are reliable
- * within the project's namespace — see tests/api/CLAUDE.md decisions #1, #2, #4.
+ * within the project's namespace - see tests/api/CLAUDE.md decisions #1, #2, #4.
  */
 
-// Origin only — service classes carry the full `/public/v2/<resource>` path
+// Origin only - service classes carry the full `/public/v2/<resource>` path
 // per the API Conventions in tests/api/CLAUDE.md. Including `/public/v2` here
 // would break WHATWG URL resolution: paths starting with `/` would replace
 // the base path, not append it (verified empirically during initial probe).
 export const BASE_URL = process.env.BASE_URL || "https://gorest.co.in";
 
 // Token from .env (loaded by playwright.config.ts via dotenv). Fail loudly
-// at module load time if missing — better than mysterious 401s in every test.
+// at module load time if missing - better than mysterious 401s in every test.
 const TOKEN = process.env.GOREST_TOKEN;
 if (!TOKEN) {
   throw new Error(

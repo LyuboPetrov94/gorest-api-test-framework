@@ -4,12 +4,12 @@ export interface CreateUserPayload {
   name: string;
   email: string;
   gender: string; // kept as string (not a union) so validation negatives can pass invalid values
-  status: string; // same reasoning — "active" / "inactive" in happy paths
+  status: string; // same reasoning - "active" / "inactive" in happy paths
 }
 
-// All fields required as a defensive TS convention — forces callers to think
+// All fields required as a defensive TS convention - forces callers to think
 // about full state at the call site, encoding standard REST PUT semantics.
-// GoRest's actual PUT is loose (accepts partials, preserves unsent fields —
+// GoRest's actual PUT is loose (accepts partials, preserves unsent fields -
 // equivalent to PATCH). See tests/api/CLAUDE.md "PUT /users/{id} is loose"
 // gotcha. For partial updates, use `PatchUserPayload` via `.patch()`.
 export interface UpdateUserPayload {
@@ -27,7 +27,7 @@ export interface PatchUserPayload {
 }
 
 export class UsersService {
-  // Full path includes `/public/v2/` prefix — `baseURL` is origin only.
+  // Full path includes `/public/v2/` prefix - `baseURL` is origin only.
   // See tests/api/CLAUDE.md "Known Gotchas" → URL resolution.
   private readonly endpoint = "/public/v2/users";
 
