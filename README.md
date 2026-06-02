@@ -4,7 +4,7 @@ API testing framework for the [GoRest](https://gorest.co.in/) sandbox REST API, 
 
 ## Status
 
-Scaffolding complete; first resource (Users) forthcoming. This README expands as specs land.
+Users resource complete end-to-end (39 TCs across CRUD, validation, security, and zod schema). Posts / Comments / Todos and the bonus sandbox specs (rate-limit / force-status / delay) pending. See [TEST_PLAN.md](TEST_PLAN.md) for coverage status.
 
 ## Why GoRest
 
