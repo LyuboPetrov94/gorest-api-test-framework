@@ -2,9 +2,9 @@
 
 Applies to tests under `tests/api/` and their service wrappers in `services/`. Complements the root `CLAUDE.md` - read both. Claude Code auto-loads this file when working within this subtree.
 
-## Project-Specific Decisions (FILL BEFORE WRITING THE SECOND SPEC)
+## Project-Specific Decisions
 
-These five decisions must be locked before broader spec work begins. Retrofitting them later is painful.
+Five design decisions locked at project start. Each shapes how downstream specs/fixtures/helpers are built; do not re-litigate without explicit approval (stop-the-line item in root `CLAUDE.md`).
 
 1. **Auth mechanism**: **Bearer token in `Authorization: Bearer <token>` header.** Token is a personal access token obtained from `https://gorest.co.in/` (sign in with GitHub/Google/Microsoft, generate from account dashboard). Loaded from `process.env.GOREST_TOKEN` in `.env` (gitignored; see `.env.example`) at config load time via `dotenv`. The `authedRequest` fixture in `fixtures/index.ts` injects the header at context creation. Fixture fails loudly at load if the token is missing - better than mysterious 401s in every test. GoRest also accepts the token as `?access-token=<token>` query parameter; we use the header form exclusively for consistency.
 
@@ -15,8 +15,6 @@ These five decisions must be locked before broader spec work begins. Retrofittin
 4. **Cleanup discipline**: GoRest supports DELETE on every created resource (`/users/{id}`, `/posts/{id}`, `/comments/{id}`, `/todos/{id}`). Per-token isolation makes deletes reliable: nobody else can delete your records first. `afterEach` cleanup via `createdIds` arrays per spec; wrap individual delete calls in `.catch(() => {})` as belt-and-braces against test-action-already-deleted cases. The 24-hour auto-reseed is the ultimate safety net for any leaked records.
 
 5. **Project framing**: **Portfolio** - continuation of the prior framework project. Lean toward defense-in-depth: pin both auth-gate EP classes (missing token AND invalid token - GoRest returns proper 401s, so these are meaningful), pin literal values in schemas, document discovered API quirks thoroughly in the gotcha catalogue below. **Bonus targets unique to GoRest** that should appear as separate specs: (a) `?force_status=500` triggers - verifying the framework handles 5xx correctly; (b) `?delay=N` triggers - verifying slow-response handling; (c) 429 + `X-RateLimit-Remaining` header behavior - a real demonstration of rate-limit testing, rare in portfolio projects.
-
-**Until these are filled, Claude must not start writing specs.** Proposed TC lists may proceed in parallel with filling these, but the gates above (especially #1 and #2) determine how the fixture and helpers are designed.
 
 ## API Conventions
 - Service wrappers live in `services/`. Endpoint paths and HTTP verbs belong in services, never in spec files. Service is the API equivalent of a Page Object Model.
@@ -36,57 +34,41 @@ These five decisions must be locked before broader spec work begins. Retrofittin
 
 ## Assertion Preferences (API-specific)
 - HTTP-layer status: `expect(response.status()).toBe(N)`. `status()` is a function call, not a property.
-- Body: `const body = await response.json(); expect(body.success).toBe(true);` - always pin at least one more field beyond `success` (a `message`, `status` mirror, or `data` value) so a regression returning `{ success: true }` with empty payload doesn't silently pass.
+- Body: GoRest returns bare resources (no `{success, data}` envelope - see "No response envelope" gotcha). Pin at least one body field beyond status code, e.g. `expect(body.id).toEqual(expect.any(Number))` plus a content field, or full `toEqual(...)` on small bodies. Status code alone misses regressions that return the right code with wrong payload.
 - **No auto-retrying assertions** for API responses. `toHaveText`, `toBeVisible`, etc. are UI-only - tied to `Locator`. An API response is a fixed snapshot.
 - For genuinely async API state (e.g. waiting for a background-job status field to flip), use `expect.poll(() => fetchStatus(), { timeout: N }).toBe('done')`. Reserved for that case - do not reach for `expect.poll` when an immediate assertion will do.
 - For empty or non-JSON bodies (e.g. HTML 404 pages), assert status only. Do not assert on HTML body strings - coupling to the error-page framework is fragile.
 
 ## Test Data & Parallelism Conventions
 
-<!-- TODO: the patterns below assume decision #2 = "API has register + login + delete". Adapt or remove sections if the lifecycle is different. -->
+**Auth setup:** All authed tests use the worker-scoped `authedRequest` fixture (Bearer token from `.env`). The token is account-bound (decision #2) - there's no register/login lifecycle, so no inline-user helpers exist for THIS project. Anonymous and bogus-token contexts are created inline via `playwrightRequest.newContext({ baseURL, extraHTTPHeaders: { Authorization: "Bearer deadbeef" } })` with `try/finally` + `ctx.dispose()`.
 
-**Worker fixture vs inline-user setup - pick by what the test does to the user:**
-- Use the worker `authedRequest` fixture when the test treats the user as a stable, opaque dependency. One user per worker, shared across tests in that worker. Cheap, no setup ceremony - but state leaks between tests on the same worker.
-- Use **inline-user setup** when the test needs to:
-  - know the user's credentials (e.g. "change-password and verify the old password fails after change")
-  - mutate credentials or identity
-  - invalidate auth mid-test (logout, delete-account)
-  - set up a second authed user in the same TC (cross-user isolation tests)
-- The fixture stays **opaque on purpose** - exposes only `APIRequestContext`, not credentials. Don't extend it to leak credentials. Specs that need them use inline helpers.
+**Nested-resource setup (Posts, Comments, Todos):** Default to file-scope shared parent via `beforeAll`/`afterAll` (matches `users-security.spec.ts` pattern). Use per-test parent ONLY when a TC mutates its parent (e.g. deletes it - `posts-validation` TC17 with an inline isolated parent). The `createParentUser(authedRequest)` helper in `helpers/createParentUser.ts` returns `{id, cleanup}` for this; future resources should follow the same shape (e.g. `createParentPost` when Comments is written).
 
-**Helper layering (when inline-user is needed):**
-- `registerAndLogin(baseURL)` - credentials-only primitive. Returns `{ email, password, name, userId, token }`. Manages a one-shot context internally.
-- `setupAuthedUser(baseURL)` - common-case helper. Returns `{ user, ctx }` - credentials AND a ready-to-use authed context. Default choice.
-- `deleteAccountByCredentials(baseURL, email, password)` - re-authenticates with credentials to obtain a fresh token, then deletes. Use when the test invalidated its own token mid-flow (logout, delete-account, second-call orphaned-token scenarios). The naive `users.deleteAccount().catch(() => {})` returns 401 silently and leaks accounts.
-
-**Cleanup for inline users - try/finally per test:**
-- Create resources before `try`, clean up in `finally`.
-- Order in `finally`: resource cleanup *first* (uses the context), then `ctx.dispose()` (releases the context).
-- Auth-gate negatives that don't register a real user (no-token, bad-token tests) don't need user cleanup. Just `ctx.dispose()` in `finally`.
+**Cleanup:** Per-describe `createdIds` array + `afterEach` loop calling `service.deleteById(id).catch(() => {})`. The tolerant `.catch` handles already-deleted (state-transition TCs). Cascade-delete on parent removal reaps children too (per gotcha), so `parentCleanup` alone is sufficient for nested specs - `createdPostIds` etc. are defensive belt-and-braces.
 
 **Parallelism:**
 - Default to `fullyParallel: true`.
 - Default to test independence. Each test resets or recreates the state it needs.
 - `test.describe.serial` is the escape hatch for genuinely-sequential flows that can't be made independent - not a convenience for "I want tests in order."
+- `workers: 2` locally / `1` on CI (`playwright.config.ts`) - tuned to stay under GoRest's rate limit.
 
 **Auth-gate coverage convention:**
 - Two EP classes per authed endpoint: missing auth header AND invalid token. Different responses, distinct EP classes.
-- Pin both classes on every authed endpoint via inline unauthed contexts. Use a standard bogus-token sentinel for consistency (e.g. `"deadbeef"`).
+- Pin both classes on every authed endpoint via inline unauthed contexts. Use the standard bogus-token sentinel `"deadbeef"` for consistency across specs.
 - Auth-gate negatives are cheap: one `playwrightRequest.newContext` + one assertion block per EP class. The gate fires before payload validation, so no real user needed.
 
 ## Schema Validation
 
-<!-- TODO: include or remove this section based on decision #3. -->
-
-Adopt `zod` v4.x if schema validation is in scope. Conventions:
+Schema validation IS in scope (decision #3) - one demonstration spec on `POST /users` + reuse across GET-by-id and list endpoints. Schemas live in `schemas/<Resource>Schemas.ts`.
 
 - **Library**: `zod` v4.x. v4 API differs from v3: `ZodSafeParseResult<T>` (single type param), not v3's `SafeParseReturnType<I, O>`. `issue.path` is `PropertyKey[]` - use `.map(String).join(".")` to satisfy TypeScript.
-- **File layout**: schemas in `schemas/<Resource>Schemas.ts`; one inner resource schema (`<Resource>Schema`) embedded in each envelope schema (`Create<Resource>ResponseSchema`, `Get<Resource>ResponseSchema`).
+- **File layout**: schemas in `schemas/<Resource>Schemas.ts`. GoRest returns bare resources (no envelope - per gotcha), so each file exports the resource schema directly (e.g. `UserSchema`) plus any composed forms (e.g. `UserListSchema = z.array(UserSchema)`).
 - **Use `safeParse`, not `parse`**. `parse` throws; `safeParse` returns `{ success, data?, error? }` - assertion-friendly. Plays nicely with `expect(result.success).toBe(true)`.
 - **Inline a `formatZodError(result)` helper** at the top of each schema spec. Pass it as the second argument to `expect().toBe(true)`. Turns failures from `expected false to be true` into `<path>: <message>`.
 - **Use `.strict()` on every object schema**. Unknown keys → schema fails. This is the regression net - the whole point of zod over `toMatchObject`.
-- **Pin literal values on the envelope**: `success: z.literal(true)`, `status: z.literal(200)`, exact `message: z.literal("...")` strings - not `z.string()`. The literal lock catches structural bugs in test code (the L8 lesson: a test POSTing-but-asserting-against-GET-schema was caught instantly by the literal `message` mismatch).
-- **Reuse the inner resource schema across endpoints**. Define `<Resource>Schema` once, embed it inside every envelope schema for that resource. Only the envelope `message` literal differs.
+- **Pin literal values on fixed-value fields** - the bare-resource equivalent of the prior project's envelope-literal pattern. For GoRest specifically: `z.enum(['male', 'female'])` on `gender`, `z.enum(['active', 'inactive'])` on `status`. If GoRest ever adds a new enum value, the schema fails loudly. Use `z.literal()` for any other contract-fixed field.
+- **Reuse the resource schema across endpoints**. Define `<Resource>Schema` once, compose it for list endpoints (`z.array(...)`). One schema, multiple usages - matches the API's actual shape.
 - **Required negative-of-the-schema TC**: every schema spec needs at least one TC that feeds the schema a deliberately malformed value and asserts `result.success === false` with the error path. Without it, an accidentally-permissive schema (e.g. `z.object({}).passthrough()`) silently green-passes every happy-path TC. This is the unit-test-of-the-schema, separate from the integration tests of the API.
 
 ## Known Gotchas
@@ -103,9 +85,9 @@ Gotcha catalogue - fills as we probe the API and find behaviors that contradict 
 
 - **No response envelope - pagination is in headers**: GoRest returns the bare resource (array for lists, object for single items) in the body. Pagination metadata is in response headers (`x-pagination-limit/page/pages/total`), navigation links in `x-links-current/next/previous` (the latter is empty string on page 1). No `{ data: ..., meta: ... }` wrapping like v1 had. Assertions target the body directly (`body[0].id`, not `body.data[0].id`).
 
-- **`id` is a JavaScript number (int64-shaped), not a string**: GoRest returns `id` as a number like `8481864`. Contrast with the prior project's Notes API which returned 24-char hex ObjectId strings. Assert with `expect.any(Number)` or a `> 0` integer check; never `expect.any(String)` and never a regex.
+- **`id` is a JavaScript number (int64-shaped), not a string**: GoRest returns `id` as a number like `8481864`. Assert with `expect.any(Number)` or a `> 0` integer check; never `expect.any(String)` and never a regex.
 
-- **POST returns 201, DELETE returns 204 with empty body**: RFC-correct REST semantics, unlike the prior Notes API (POST=200, DELETE=200+JSON). POST body echoes the created resource including server-assigned `id`. DELETE returns no body at all - `response.text()` returns empty string, `response.json()` would throw. Assert status only on DELETE.
+- **POST returns 201, DELETE returns 204 with empty body**: RFC-correct REST semantics. POST body echoes the created resource including server-assigned `id`. DELETE returns no body at all - `response.text()` returns empty string, `response.json()` would throw. Assert status only on DELETE (plus `expect(await res.text()).toBe("")` if you want to belt-and-brace the empty-body contract).
 
 - **404 envelope is `{ "message": "Resource not found" }`**: Consistent JSON shape across not-found cases. Safe to `await response.json()` on 404 responses; `body.message` is the field to pin.
 
@@ -113,7 +95,7 @@ Gotcha catalogue - fills as we probe the API and find behaviors that contradict 
 
 - **Validation errors return as `[{field, message}]` array, status 422**: Different envelope from the 404 case (`{message}`). Example: `[{"field":"email","message":"is invalid"}]`. Two distinct error envelope shapes on the same API. Tests assert on the array shape - use `expect(body).toContainEqual({field, message})` or iterate / `.find()` by field name.
 
-- **GoRest aggregates ALL validation errors per request** - not first-failure-wins. POST with multiple invalid fields returns one error per invalid field, all in the response array. Observed field order on POST: `name, gender, status, email` (likely the declaration order in the underlying model). **Do not pin field order in assertions** - couples tests to internal model declaration. Use set semantics: assert that the array contains the expected error fields, not that they appear in a specific order. Contrast with the prior project's Notes API which short-circuited at the first failure.
+- **GoRest aggregates ALL validation errors per request** - not first-failure-wins. POST with multiple invalid fields returns one error per invalid field, all in the response array. Observed field order on POST: `name, gender, status, email` (likely the declaration order in the underlying model). **Do not pin field order in assertions** - couples tests to internal model declaration. Use set semantics: assert that the array contains the expected error fields, not that they appear in a specific order.
 
 - **`gender` enum accepts only `male`/`female`, case-insensitively**: `"Female"` returns 201 with `response.gender === "female"` (case normalized server-side). `"other"` is rejected despite the term sometimes appearing in GoRest docs. Error message has a server-side typo: `"can't be blank, can be male of female"` (literal "of" instead of "or") - pin this exactly in assertions; do not silently correct it.
 
@@ -123,9 +105,36 @@ Gotcha catalogue - fills as we probe the API and find behaviors that contradict 
 
 - **PATCH and PUT reuse POST validators on sent fields**: Both verbs apply the same validation rules to whatever fields are present in the body. Unsent fields are not validated (consistent with PUT-is-loose + PATCH-partial). Implication: validation negative coverage lives primarily on POST; one TC each for PATCH and PUT (with one invalid sent field) suffices to document verb-parity, no need to repeat the full validation matrix per verb.
 
+- **POST /users no-auth returns 401 "Authentication failed" - a distinct message from bogus-token's "Invalid token"**: The two auth-gate EP classes on POST formalize different security narratives. "No authentication" = the request had no credentials at all; "Invalid token" = a token was sent and failed validation. Pin both messages exactly in TCs - GoRest treats them as semantically different events.
+
+- **Auth-gate behavior is verb-dependent: POST is 401-gated, but all /users/{id} verbs (GET/PUT/PATCH/DELETE) with no-auth return 404, NOT 401**: This is per-token data isolation projected onto anonymous requests. Anonymous has no data slice, so every individual resource appears as "Resource not found" - regardless of whether the id actually exists in some other token's slice. Probed empirically 2026-06-01: PUT/PATCH/DELETE/GET on `/users/{id}` all return `404 {"message": "Resource not found"}` with no Authorization header. There is no traditional 401 auth gate on these endpoints - security is enforced by data invisibility. Test design implication: auth-gate TCs on `/users/{id}` for the no-auth class assert `404 "Resource not found"`, not `401`; this *is* the auth gate, just expressed as an isolation property.
+
+- **Bogus-token always returns 401 "Invalid token", uniformly across all verbs**: Token validation fires before any data lookup. Whether the request is GET-list, GET-by-id, POST, PUT, PATCH, or DELETE, sending `Authorization: Bearer <invalid>` produces `401 {"message": "Invalid token"}`. This is the one consistent gate. Combined with the no-auth-on-{id}-returns-404 behavior, the security shape splits this way: POST = 401 on no-auth + 401 on bogus; /users/{id} verbs = 404 on no-auth (isolation) + 401 on bogus (token-validation); GET /users (list) = 200 on no-auth (publicly readable) + 401 on bogus (token-validation when present).
+
+Entries below were discovered during the Posts probe (2026-06-02).
+
+- **POST `/users/{user_id}/posts` with non-existent or deleted parent returns `422 [{field:"user",message:"must exist"}]`, NOT a routing 404**: GoRest treats parent existence as a *validation* concern applied alongside field validation, not as URL routing. Probed empirically 2026-06-02 with both a never-existed path id (99999999) and a freshly-deleted user id - both produced the same 422 envelope. The error field name is `"user"` (singular noun, the model relation name), NOT `"user_id"` (the URL parameter name). Test design implications: (1) parent-not-found TCs assert 422 + the exact `[{field:"user",message:"must exist"}]` envelope, not 404; (2) the deleted-parent case is a state-transition variant of bogus-parent that shares the same observable contract - one TC per technique application is enough; (3) `field: "user"` is the exact pin - do not assume the URL param name.
+
+- **Anonymous `GET /posts/{id}` returns 404 even for posts your token just created**: Per-token data isolation extends to `/posts/{id}`, same property documented above for `/users/{id}`. The anonymous slice sees only the public seed; token-owned posts are invisible. Test design implication: positive `GET /posts/{id}` retrieval TCs must run authed - an anonymous retrieval of a token-owned post will fail with `404 {"message":"Resource not found"}`, not 200.
+
+- **Anonymous `GET /users/{user_id}/posts` for a token-owned parent returns `200 []`, NOT 404**: Nested-list isolation diverges from single-resource isolation. Lists return an empty array when nothing is visible; single-resource GETs return 404. The same authed request returns the actual posts. Test design implication: anonymous-readability TCs on nested lists assert `200` plus empty array, not 404; do not symmetry-assume with `/posts/{id}`.
+
+- **`user_id` in a POST body is silently ignored when the URL path also encodes it - path wins**: `POST /users/{path_id}/posts` with body `{user_id: <other_id>, title, body}` creates the post under `path_id`; the body's `user_id` is dropped (no 422, no warning, no echo of the discarded value). Path is the source of truth for parentage. Encoded in `services/PostsService.ts`: `CreatePostPayload = { title, body }` deliberately omits a `user_id` field, so callers cannot try to set parentage through the body. Tests that wish to verify the path-wins property explicitly do so via raw `request.post()` with an extended payload, not via the service method.
+
+- **Auth gate on `POST /users/{user_id}/posts` fires BEFORE parent-validation**: Anonymous POST to a bogus `user_id` returns `401 "Authentication failed"`, not the `422 [{field:"user",message:"must exist"}]` that an authed POST with the same bogus id returns. Order of checks: auth presence → token validity → field/parent validation. Test design implications: (1) auth-gate TCs for nested writes can use any path id (real, bogus, or `1`) because auth fires before id-resolution; (2) bogus-parent / deleted-parent TCs MUST be authed to reach the validation layer - otherwise they assert against the wrong gate.
+
+Entries below were discovered during the Posts validation probe (2026-06-02).
+
+- **Blank EP class collapses missing field, empty string, and whitespace-only**: For `title` and `body` on Posts, all three input forms produce the same `[{field:"X",message:"can't be blank"}]` response. The server normalizes whitespace before validating, treats absent keys as blank, and rejects empty strings the same way. Test design implication: one representative TC per field is enough per EP - pin the empty-string form, document the equivalence as a gotcha, do not multiply into 3 TCs per field. The aggregation TC (POST `{title:"",body:""}`) doubles as evidence the empty-string path lands in the blank class for both fields.
+
+- **Title length bound is 1-200 chars; body length bound is 1-500 chars**: Both fields use the same lower bound (1) and the same error-message format as `user.name`: `"is too long (maximum is N characters)"` with the max value embedded literally. Probed empirically 2026-06-02: title at 200 → 201, at 201 → 422 with `"is too long (maximum is 200 characters)"`; body at 500 → 201, at 501 → 422 with `"is too long (maximum is 500 characters)"`. Test design implication: BVA at both bounds for portfolio defense-in-depth. Lower bound: lengths 1 and 2 (the "just below" point at length 0 IS the blank class, already covered by a separate TC - do not duplicate). Upper bound: 3-point BVA at lengths 199/200/201 for title and 499/500/501 for body. Five BVA points per field total. The redundancy at lower bound (both 1 and 2 produce 201) is intentional: documents the boundary's *shape* per the EP/BVA rule in root CLAUDE.md, hedges against silent off-by-one regressions if GoRest ever ratchets the minimum.
+
+- **Deleting a parent user CASCADE-DELETES all of its posts**: Probed 2026-06-02 with 4 posts under one parent - after `DELETE /users/{parent_id}` (204), every child post returned 404 to subsequent authed GETs. Distinguishes physical deletion from per-token-isolation invisibility because the same token that created the posts can no longer see them. Test design implication: `parentCleanups` alone is sufficient for nested-resource specs (deleting the parent reaps the children). Explicit per-post cleanup arrays (`createdPostIds`) are defensive belt-and-braces in case the cascade behavior changes - cheap to keep, but not load-bearing.
+
+- **`user_id` on a post is mutable via PATCH and PUT; parent-existence validation is verb-agnostic**: Probed empirically 2026-06-02. PATCH `/posts/{id}` with `{user_id: <other_user_id>}` returns 200 with the post now showing the new `user_id` (reparented). PUT `/posts/{id}` with `{user_id: <other>, title, body}` does the same plus updates the other fields. No "field is immutable" error, no "cannot change parent" error - `user_id` is a regular updatable foreign key. The only check is parent-existence: bogus ids on either verb return `422 [{field:"user",message:"must exist"}]`, identical envelope to the POST case documented above. So the parent-existence rule fires uniformly across POST, PATCH, and PUT - one validator, three verbs. Test design implications: (1) `user_id` mutability is part of the CRUD contract - worth one happy-path TC in posts-crud (PATCH chosen as the single representative, since the property is verb-agnostic); (2) parent-existence on writes deserves coverage on each write verb in posts-validation - same pattern as TC16/TC17 extending to PATCH (TC18) and PUT (TC19); (3) cross-token reparenting was NOT probed - would require a second token. Per-token isolation should make this impossible, but the property is documented as deferred alongside the existing cross-token-isolation deferral in users-security.
+
 ## API-Specific What NOT to Do
 - Do not write endpoint paths or HTTP verbs directly in spec files - abstract through service wrappers in `services/`.
 - Do not assert on the body of 4xx responses without inspecting the body first - they may be HTML, not JSON, and `await response.json()` will throw.
 - Do not use auto-retrying `Locator` assertions on API responses.
 - Do not skip the cross-file consistency review per-resource (workflow gate #2 in root CLAUDE.md).
-- Do not start writing specs before the five project-specific decisions at the top of this file are filled in.
