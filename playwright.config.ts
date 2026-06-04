@@ -12,8 +12,9 @@ export default defineConfig({
   retries: 1,
 
   // Workers reduced from the prior project's 4 to stay under GoRest's
-  // 90-req/min default rate limit per token. If your token has a raised
-  // limit, increase here. Hitting 429s in green tests? Lower further.
+  // 300-req/min default rate limit per token (a ~5 req/sec refilling token
+  // bucket - steady traffic rarely depletes it, bursts can). If your token
+  // has a raised limit, increase here. Hitting 429s in green tests? Lower further.
   workers: process.env.CI ? 1 : 2,
 
   reporter: [["html", { open: "never" }]],
