@@ -7,10 +7,10 @@ Coverage status across the GoRest API surface. Updated as specs land. For per-TC
 | Resource | CRUD | Validation | Security | Schema | Total |
 |---|---|---|---|---|---|
 | Users | ✅ 8 | ✅ 16 | ✅ 11 | ✅ 4 | 39 |
-| Posts | 🔲 0 | 🔲 0 | 🔲 0 | - | 0 |
-| Comments | 🔲 0 | 🔲 0 | - | - | 0 |
+| Posts | ✅ 11 | ✅ 19 | ✅ 13 | - | 43 |
+| Comments | ✅ 11 | ✅ 23 | ✅ 13 | - | 47 |
 | Todos | 🔲 0 | 🔲 0 | - | - | 0 |
-| **Total** | **8** | **16** | **11** | **4** | **39** |
+| **Total** | **30** | **58** | **37** | **4** | **129** |
 
 ## Bonus specs (sandbox features unique to GoRest)
 
