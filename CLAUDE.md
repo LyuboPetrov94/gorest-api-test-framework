@@ -1,7 +1,7 @@
 # GoRest API Tests - Claude Instructions
 
 ## Project Overview
-API testing framework for the GoRest sandbox API (https://gorest.co.in, v2 at `https://gorest.co.in/public/v2`). Portfolio-style continuation of the prior `playwright-framework` project, applying the same service-wrapper / fixture / schema patterns to a Bearer-token-authenticated REST API with per-token data isolation. GoRest specifically chosen for: real Bearer-token auth (vs Petstore's theatrical api_key), per-token state isolation (no shared-data flakiness), built-in error/delay simulation (`?force_status=N`, `?delay=N`), and testable rate-limiting (90 req/min default, returns 429 with `X-RateLimit-*` headers).
+API testing framework for the GoRest sandbox API (https://gorest.co.in, v2 at `https://gorest.co.in/public/v2`). Portfolio-style continuation of the prior `playwright-framework` project, applying the same service-wrapper / fixture / schema patterns to a Bearer-token-authenticated REST API with per-token data isolation. GoRest specifically chosen for: real Bearer-token auth (vs Petstore's theatrical api_key), per-token state isolation (no shared-data flakiness), built-in error/delay simulation (`?force_status=N`, `?delay=N`), and testable rate-limiting (300 req/min default, returns 429 with `X-RateLimit-*` headers).
 
 ## User Context
 - QA Engineer, ISTQB Foundation Level Certified
