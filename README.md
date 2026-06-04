@@ -13,7 +13,7 @@ GoRest is unusually well-suited for portfolio-grade API testing demonstrations:
 - **Per-token data isolation** - records created by one access token are invisible to others, so tests never collide with other consumers of the public sandbox
 - **Real Bearer-token authentication** - enforced server-side, properly returns 401/403, suitable for genuine auth-gate negative tests
 - **Built-in error and latency simulation** - `?force_status=N` and `?delay=N` query parameters specifically designed for testing error-path handling
-- **Testable rate limiting** - 90 requests/min default with `X-RateLimit-*` response headers, supports demonstrating 429 handling
+- **Testable rate limiting** - 300 requests/min default (continuously-refilling token bucket, ~5 req/sec) with `X-RateLimit-*` response headers, supports demonstrating 429 handling
 - **24-hour auto-reseed** - predictable state cycle, leaked records self-clean
 
 ## Tech Stack
@@ -108,7 +108,7 @@ npm run report
 
 ### Parallelism notes
 
-GoRest's default token rate limit is **90 requests/minute**. `playwright.config.ts` defaults to 2 workers locally and 1 on CI to stay under the limit. If your token has a raised rate limit, increase `workers` in the config. If you hit unexpected 429s, lower it.
+GoRest's default token rate limit is **300 requests/minute** (a continuously-refilling token bucket at ~5 req/sec, not a hard fixed window - so steady low-rate traffic effectively never depletes it; bursts can). `playwright.config.ts` defaults to 2 workers locally and 1 on CI, which stays comfortably under the limit. If your token has a raised rate limit, increase `workers` in the config. If you hit unexpected 429s, lower it.
 
 ## Architecture
 
