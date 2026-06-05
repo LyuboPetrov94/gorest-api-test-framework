@@ -4,7 +4,7 @@ API testing framework for the [GoRest](https://gorest.co.in/) sandbox REST API, 
 
 ## Status
 
-Users resource complete end-to-end (39 TCs across CRUD, validation, security, and zod schema). Posts / Comments / Todos and the bonus sandbox specs (rate-limit / force-status / delay) pending. See [TEST_PLAN.md](TEST_PLAN.md) for coverage status.
+All four standard resources complete end-to-end - **176 TCs** across CRUD, validation, and security (plus a zod schema demonstration on Users): Users (39), Posts (43), Comments (47), Todos (47). The bonus sandbox specs (rate-limit / force-status / delay) are pending. See [TEST_PLAN.md](TEST_PLAN.md) for the coverage matrix.
 
 ## Why GoRest
 
@@ -109,6 +109,35 @@ npm run report
 ### Parallelism notes
 
 GoRest's default token rate limit is **300 requests/minute** (a continuously-refilling token bucket at ~5 req/sec, not a hard fixed window - so steady low-rate traffic effectively never depletes it; bursts can). `playwright.config.ts` defaults to 2 workers locally and 1 on CI, which stays comfortably under the limit. If your token has a raised rate limit, increase `workers` in the config. If you hit unexpected 429s, lower it.
+
+## API Call Budget
+
+Total HTTP requests a full green run issues to GoRest, by spec. Updated as specs are added or changed.
+
+| Resource | Spec | API calls |
+|----------|------|----------:|
+| Users | `users-crud.spec.ts` | 18 |
+| Users | `users-validation.spec.ts` | 26 |
+| Users | `users-security.spec.ts` | 13 |
+| Users | `users-schema.spec.ts` | 6 |
+| Posts | `posts-crud.spec.ts` | 30 |
+| Posts | `posts-validation.spec.ts` | 39 |
+| Posts | `posts-security.spec.ts` | 17 |
+| Comments | `comments-crud.spec.ts` | 32 |
+| Comments | `comments-validation.spec.ts` | 45 |
+| Comments | `comments-security.spec.ts` | 18 |
+| Todos | `todos-crud.spec.ts` | 47 |
+| Todos | `todos-validation.spec.ts` | 41 |
+| Todos | `todos-security.spec.ts` | 17 |
+| | **Total** | **349** |
+
+Per-resource subtotals: Users **63**, Posts **86**, Comments **95**, Todos **105**.
+
+**Rate-limit relevance:** GoRest's 300 req/min limit is **per access token**, so not every call above counts against your configured token. Of the 349 total, **27 are anonymous** (no `Authorization` header) and **27 use a deliberately-invalid bogus token** (`deadbeef`) - both concentrated in the security specs' auth-gate negatives plus the anonymous `GET` list in each CRUD spec. Neither group draws down the `.env` token's budget (anonymous carries no token; the bogus token is a different, invalid identity rejected at validation). So only **~295** requests count toward the token's 300/min - and spread across a run lasting well over a minute, with the bucket continuously refilling, a normal run never approaches the ceiling.
+
+**What's counted (in the 349 total):** every real HTTP request to GoRest - test-body requests, file-scope `beforeAll`/`afterAll` setup and teardown, `afterEach` cleanup `DELETE`s (including the second `DELETE` in idempotency/state-transition TCs, which returns 404 but is still a call), and parent-helper calls (`createParentUser` = 1 POST + 1 DELETE; `createParentPost` = 2 POSTs + 1 DELETE). Anonymous and bogus-token requests count too (they hit the server, returning 200/401/404). `newContext()` / `dispose()` are *not* counted - they create/close a client context without issuing a request.
+
+**Assumptions:** a green run (config `retries: 1` only fires on failure), counted at `workers: 1`. Under parallel workers the file-scope `beforeAll`/`afterAll` hooks can run once per worker that picks up tests from a file, nudging the real total slightly higher.
 
 ## Architecture
 
