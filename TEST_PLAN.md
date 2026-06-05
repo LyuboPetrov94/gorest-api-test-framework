@@ -9,8 +9,8 @@ Coverage status across the GoRest API surface. Updated as specs land. For per-TC
 | Users | ✅ 8 | ✅ 16 | ✅ 11 | ✅ 4 | 39 |
 | Posts | ✅ 11 | ✅ 19 | ✅ 13 | - | 43 |
 | Comments | ✅ 11 | ✅ 23 | ✅ 13 | - | 47 |
-| Todos | 🔲 0 | 🔲 0 | - | - | 0 |
-| **Total** | **30** | **58** | **37** | **4** | **129** |
+| Todos | ✅ 15 | ✅ 19 | ✅ 13 | - | 47 |
+| **Total** | **45** | **77** | **50** | **4** | **176** |
 
 ## Bonus specs (sandbox features unique to GoRest)
 
