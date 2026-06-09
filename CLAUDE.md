@@ -69,13 +69,15 @@ Before writing any code for a new feature:
 - For multi-step flows, use nested `test.describe` blocks with a separate `beforeEach` that completes the prerequisite step
 
 ## Running Tests
-<!-- TODO: confirm/adjust commands -->
 ```bash
-npm test                                        # all tests
+npm test                                        # all tests EXCEPT the rate-limit burst (--grep-invert @ratelimit)
+npm run test:ratelimit                          # ONLY the @ratelimit burst (rate-limit.spec.ts TC03) - run in isolation
 npx playwright test tests/api/<resource>        # specific resource
 npx playwright test --project=api               # API only
 npm run report                                  # HTML report
 ```
+
+The `@ratelimit`-tagged burst (`tests/api/sandbox/rate-limit.spec.ts` TC03) fires ~400 concurrent **authed** requests to deliberately deplete the per-token 300/min bucket and prove 429 enforcement. It is excluded from the default run (`npm test` / `npm run test:api`) so it does not starve other authed specs' minute budget; run it alone via `npm run test:ratelimit`, and let the bucket recover (~60s) before running other authed specs. The rate-limit spec's header-contract TCs (TC01/TC02) are untagged and stay in the default suite.
 
 Retries enabled (1) locally and on CI. Screenshot / video / trace use `*-on-failure` semantics - artifacts retained only when the final outcome is failed.
 
