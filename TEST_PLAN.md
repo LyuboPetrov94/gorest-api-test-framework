@@ -18,9 +18,9 @@ These exercise GoRest-specific capabilities that don't fit the standard CRUD/val
 
 | Spec | Coverage | TCs |
 |---|---|---|
-| Rate-limit headers + 429 behavior | 🔲 not started | 0 |
-| `?force_status=N` error simulation | 🔲 not started | 0 |
-| `?delay=N` slow-response handling | 🔲 not started | 0 |
+| `?force_status=N` error simulation | ✅ done | 10 |
+| `?delay=N` slow-response handling | ✅ done | 6 |
+| Rate-limit headers + 429 behavior | ✅ done | 3 |
 
 ## Legend
 
