@@ -67,4 +67,10 @@ export class SandboxService {
       params: { delay: ms, force_status: code },
     });
   }
+
+  // Plain GET of the carrier endpoint with no sandbox params. Used by the
+  // rate-limit spec for the header-contract checks and the concurrent burst.
+  async list(): Promise<APIResponse> {
+    return this.request.get(this.endpoint);
+  }
 }
