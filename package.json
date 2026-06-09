@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "API testing framework for the GoRest sandbox API (https://gorest.co.in). Demonstrates service-wrapper pattern, Bearer-token auth fixture, schema validation, and ISTQB test design techniques against a real REST API.",
   "scripts": {
-    "test": "playwright test",
-    "test:api": "playwright test tests/api",
+    "test": "playwright test --grep-invert @ratelimit",
+    "test:api": "playwright test tests/api --grep-invert @ratelimit",
+    "test:ratelimit": "playwright test --grep @ratelimit",
     "test:debug": "playwright test --debug",
     "report": "playwright show-report",
     "typecheck": "tsc --noEmit"
