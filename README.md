@@ -4,14 +4,28 @@ API testing framework for the [GoRest](https://gorest.co.in/) sandbox REST API, 
 
 ## Status
 
-All four standard resources complete end-to-end - **176 TCs** across CRUD, validation, and security (plus a zod schema demonstration on Users): Users (39), Posts (43), Comments (47), Todos (47). The bonus sandbox specs (rate-limit / force-status / delay) are pending. See [TEST_PLAN.md](TEST_PLAN.md) for the coverage matrix.
+**Complete - 195 test cases, all green.** All four standard resources are covered end-to-end (CRUD, validation, security, plus a zod schema demonstration on Users), and all three GoRest-specific sandbox bonus specs are done. See [TEST_PLAN.md](TEST_PLAN.md) for the live coverage matrix and [Notable Patterns](#notable-patterns) for the highlights.
+
+### Coverage
+
+| Resource | CRUD | Validation | Security | Schema | Total |
+|----------|-----:|-----------:|---------:|-------:|------:|
+| Users    | 8  | 16 | 11 | 4 | 39 |
+| Posts    | 11 | 19 | 13 | - | 43 |
+| Comments | 11 | 23 | 13 | - | 47 |
+| Todos    | 15 | 19 | 13 | - | 47 |
+| **Subtotal** | **45** | **77** | **50** | **4** | **176** |
+
+Bonus sandbox specs (GoRest-specific capabilities): **force-status** 10 · **delay** 6 · **rate-limit** 3 = **19**.
+
+**Grand total: 195 TCs.**
 
 ## Why GoRest
 
 GoRest is unusually well-suited for portfolio-grade API testing demonstrations:
 
 - **Per-token data isolation** - records created by one access token are invisible to others, so tests never collide with other consumers of the public sandbox
-- **Real Bearer-token authentication** - enforced server-side, properly returns 401/403, suitable for genuine auth-gate negative tests
+- **Real Bearer-token authentication** - enforced server-side, returning a proper `401` on bad/missing credentials (and `404` on per-token-isolated resources), suitable for genuine auth-gate negative tests
 - **Built-in error and latency simulation** - `?force_status=N` and `?delay=N` query parameters specifically designed for testing error-path handling
 - **Testable rate limiting** - 300 requests/min default (continuously-refilling token bucket, ~5 req/sec) with `X-RateLimit-*` response headers, supports demonstrating 429 handling
 - **24-hour auto-reseed** - predictable state cycle, leaked records self-clean
@@ -26,15 +40,13 @@ GoRest is unusually well-suited for portfolio-grade API testing demonstrations:
 
 ## What This Demonstrates
 
-(Sections marked *planned* are part of the design but not yet implemented.)
-
 - **Service-wrapper pattern** - endpoints and HTTP verbs encapsulated in `services/<Resource>Service.ts`; specs never touch raw paths
 - **Worker-scoped authenticated request fixture** - `authedRequest` injects the Bearer token once per worker; tests reuse the context
-- **ISTQB test design** - equivalence partitioning, 3-point boundary value analysis, decision tables, state-transition coverage *(planned: applied per resource)*
-- **Runtime schema validation** with strict-mode `zod` - *(planned: one demonstration spec on `POST /users`)*
-- **Rate-limit behavior verification** - *(planned: dedicated spec asserting 429 + `X-RateLimit-Remaining` header behavior)*
-- **Force-error and delay simulation handling** - *(planned: dedicated specs using `?force_status` and `?delay` query params)*
-- **Per-subtree documentation** - `tests/api/CLAUDE.md` carries API-specific conventions, decisions, and discovered gotchas
+- **ISTQB test design applied per resource** - equivalence partitioning, 3-point boundary value analysis, decision tables, and state-transition coverage
+- **Auth-gate negative coverage** - both EP classes on every authed write verb (no token vs. invalid token - GoRest returns distinct responses for each)
+- **Runtime schema validation** with strict-mode `zod` - a demonstration spec on `POST /users`, reused across GET-by-id and the list endpoint, with a negative-of-schema unit test
+- **Fault-injection / resilience testing** - the sandbox specs exercise forced error statuses (`?force_status`), slow responses (`?delay`, with a BVA on the 5 s cap), and real rate-limit `429` enforcement via a concurrent burst
+- **Per-subtree documentation** - `tests/api/CLAUDE.md` carries API-specific conventions, the locked design decisions, and an empirically-built gotcha catalogue
 
 ## Project Structure
 
@@ -42,20 +54,30 @@ GoRest is unusually well-suited for portfolio-grade API testing demonstrations:
 gorest-api-tests/
 ├── tests/
 │   └── api/
-│       └── CLAUDE.md          # API conventions, the 5 locked decisions, gotcha catalogue
-├── services/                  # Service wrappers (one class per resource) - populated per spec
-├── schemas/                   # zod response-shape schemas (one demonstration on Users)
+│       ├── CLAUDE.md          # API conventions, the 5 locked decisions, gotcha catalogue
+│       ├── users/             # crud · validation · security · schema
+│       ├── posts/             # crud · validation · security
+│       ├── comments/          # crud · validation · security
+│       ├── todos/             # crud · validation · security
+│       └── sandbox/           # force-status · delay · rate-limit (GoRest-specific)
+├── services/                  # Service wrappers - one class per resource + SandboxService
+├── schemas/
+│   └── UserSchemas.ts         # zod response-shape schemas (Users demonstration)
 ├── fixtures/
 │   └── index.ts               # authedRequest (worker-scoped Bearer-token APIRequestContext)
 ├── helpers/
-│   └── data.ts                # randomEmail, randomName, randomString
-├── playwright.config.ts       # Single `api` project, baseURL https://gorest.co.in/public/v2
+│   ├── data.ts                # randomEmail, randomName, randomString
+│   ├── createParentUser.ts    # { id, cleanup } for nested-resource setup
+│   └── createParentPost.ts    # { postId, cleanup } - chains createParentUser -> post
+├── playwright.config.ts       # Single `api` project; baseURL is origin-only (https://gorest.co.in)
 ├── tsconfig.json
 ├── .env.example               # Template - copy to .env and fill GOREST_TOKEN
 ├── .gitignore                 # .env, node_modules, test-results, playwright-report
 ├── CLAUDE.md                  # Project conventions (root)
 └── README.md                  # This file
 ```
+
+> **Note on `baseURL`:** it is the origin only (`https://gorest.co.in`); each service carries the full `/public/v2/<resource>` path. Putting `/public/v2` in `baseURL` would break WHATWG URL resolution - request paths starting with `/` replace the base path rather than appending to it. See the gotcha catalogue in [`tests/api/CLAUDE.md`](tests/api/CLAUDE.md).
 
 ## Getting Started
 
@@ -90,11 +112,14 @@ npm run typecheck    # tsc --noEmit; should report no errors
 ## Running Tests
 
 ```bash
-# All tests
+# All tests EXCEPT the rate-limit burst (excludes the @ratelimit tag)
 npm test
 
-# API specs only (single `api` project, no browser needed)
+# API specs only (single `api` project, no browser needed) - also excludes @ratelimit
 npm run test:api
+
+# ONLY the rate-limit burst (rate-limit.spec.ts TC03) - run in isolation
+npm run test:ratelimit
 
 # Specific resource
 npx playwright test tests/api/users
@@ -105,6 +130,8 @@ npm run test:debug
 # HTML report after a run
 npm run report
 ```
+
+The `@ratelimit`-tagged burst fires ~400 concurrent authed requests to deplete the per-token 300/min bucket and prove `429` enforcement, so it is excluded from the default run (it would otherwise starve other authed specs' budget). Run it alone via `npm run test:ratelimit`, and let the bucket recover (~60 s) before running the authed suite again.
 
 ### Parallelism notes
 
@@ -148,7 +175,7 @@ The `rate-limit.spec.ts` count (**2**) covers only TC01 (authed) + TC02 (anon), 
 
 ### Service Wrappers
 
-Each GoRest resource gets a corresponding class in `services/` (the API equivalent of a Page Object Model). Services own endpoint paths and HTTP verbs; specs only see methods. Conventions and design rules live in [`tests/api/CLAUDE.md`](tests/api/CLAUDE.md).
+Each GoRest resource gets a corresponding class in `services/` (the API equivalent of a Page Object Model): `UsersService`, `PostsService`, `CommentsService`, `TodosService`, plus `SandboxService` for the `?force_status` / `?delay` / rate-limit features. Services own endpoint paths and HTTP verbs; specs only see methods. Conventions and design rules live in [`tests/api/CLAUDE.md`](tests/api/CLAUDE.md).
 
 ### Fixtures
 
@@ -158,11 +185,12 @@ Each GoRest resource gets a corresponding class in `services/` (the API equivale
 
 ### Helpers
 
-- **`helpers/data.ts`** - randomized data generators (`randomEmail`, `randomName`, `randomString`). Added per resource as concrete needs appear; no speculative helpers.
+- **`helpers/data.ts`** - randomized data generators (`randomEmail`, `randomName`, `randomString`)
+- **`helpers/createParentUser.ts`** / **`createParentPost.ts`** - return `{ id, cleanup }` / `{ postId, cleanup }` closures for nested-resource setup; the cleanup closure cascade-deletes the whole subtree (per-token isolation makes this reliable)
 
-### Schemas (planned)
+### Schemas
 
-`schemas/UserSchemas.ts` will hold zod schemas for `POST /users` response validation - one demonstration spec, not retrofitted across all assertions. Strict-mode (`.strict()`) catches "server added a field" regressions that `toMatchObject` cannot.
+`schemas/UserSchemas.ts` holds the zod schemas (`UserSchema`, `UserListSchema`) used by the `users-schema` demonstration spec - validated on `POST /users` and reused across GET-by-id and the list endpoint, not retrofitted across every assertion. Strict-mode (`.strict()`) catches "server added a field" regressions that `toMatchObject` cannot, and a negative-of-schema unit test guards against an accidentally-permissive schema.
 
 ## Test Design Techniques
 
@@ -173,10 +201,30 @@ Tests apply ISTQB techniques:
 - **Decision Table** - multi-input combinations mapped to expected outcomes
 - **State Transition** - multi-step flows covering valid and invalid transitions
 
+## Notable Patterns
+
+Highlights worth a look, each linked to the spec that demonstrates it:
+
+| Pattern | Where to see it |
+|---------|-----------------|
+| Per-token data isolation as a security property - anonymous writes on `/{id}` return `404` (not `401`) because the resource is invisible, not because of a classic auth gate | [users-security.spec.ts](tests/api/users/users-security.spec.ts) |
+| Two distinct auth-gate EP classes - no-token (`"Authentication failed"`) vs. invalid-token (`"Invalid token"`), pinned separately on every write verb | [posts-security.spec.ts](tests/api/posts/posts-security.spec.ts) |
+| Parameterised write-verb loop - one closure table drives the PUT/PATCH/DELETE auth-gate negatives without duplication | [users-security.spec.ts](tests/api/users/users-security.spec.ts) |
+| 5-point boundary value analysis on length bounds - both bounds, keeping points whose outcomes converge to document the boundary's shape | [posts-validation.spec.ts](tests/api/posts/posts-validation.spec.ts) |
+| Validation-error aggregation with set-semantic assertions - asserts the set of error fields, never their order (no coupling to model declaration order) | [users-validation.spec.ts](tests/api/users/users-validation.spec.ts) |
+| State-transition coverage - `status` `pending` <-> `completed` both edges, plus DELETE idempotency (`exists -> deleted -> still-deleted`) | [todos-crud.spec.ts](tests/api/todos/todos-crud.spec.ts) |
+| Server-side timezone normalization pinned - `due_on` converted to IST (`+05:30`), asserted literally so a server TZ change fails loudly | [todos-validation.spec.ts](tests/api/todos/todos-validation.spec.ts) |
+| Runtime schema validation - strict `zod` schema reused across endpoints + a negative-of-schema unit test | [users-schema.spec.ts](tests/api/users/users-schema.spec.ts) |
+| Fault injection via `?force_status` - one EP class across all endpoints/verbs (cross-cutting middleware), so it is covered once on a carrier endpoint | [force-status.spec.ts](tests/api/sandbox/force-status.spec.ts) |
+| Slow-response handling with a BVA on the 5 s `?delay` cap - including the above-cap clamp | [delay.spec.ts](tests/api/sandbox/delay.spec.ts) |
+| Real rate-limit `429` via a concurrent burst, isolated from the default run so it doesn't drain the shared budget | [rate-limit.spec.ts](tests/api/sandbox/rate-limit.spec.ts) |
+| Nested-resource lifecycle - parent helpers + cascade-delete cleanup (deleting the user reaps its posts/comments) | [comments-crud.spec.ts](tests/api/comments/comments-crud.spec.ts) |
+
 ## Documentation Map
 
 | File | What's in it |
 |------|--------------|
 | [`README.md`](README.md) | This file - overview, scope, getting started |
+| [`TEST_PLAN.md`](TEST_PLAN.md) | Coverage matrix - TC counts per resource and per sandbox spec |
 | [`CLAUDE.md`](CLAUDE.md) | Project-wide conventions and the inspect-and-approve workflow rules |
 | [`tests/api/CLAUDE.md`](tests/api/CLAUDE.md) | API conventions, the 5 locked project-specific decisions, schema-validation discipline, gotcha catalogue (fills empirically) |
