@@ -103,6 +103,7 @@ test.describe("Posts - validation - title length BVA (lower + upper bounds)", ()
 
       expect(res.status()).toBe(status);
       if (errorMessage !== null) {
+        // eslint-disable-next-line playwright/no-conditional-expect -- status asserted unconditionally above; only the failure-row message is guarded
         expect(body).toContainEqual({ field: "title", message: errorMessage });
       }
     });
@@ -161,6 +162,7 @@ test.describe("Posts - validation - body length BVA (lower + upper bounds)", () 
 
       expect(res.status()).toBe(status);
       if (errorMessage !== null) {
+        // eslint-disable-next-line playwright/no-conditional-expect -- status asserted unconditionally above; only the failure-row message is guarded
         expect(body).toContainEqual({ field: "body", message: errorMessage });
       }
     });

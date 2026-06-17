@@ -65,10 +65,7 @@ export class PostsService {
     });
   }
 
-  async patch(
-    postId: number,
-    partial: PatchPostPayload,
-  ): Promise<APIResponse> {
+  async patch(postId: number, partial: PatchPostPayload): Promise<APIResponse> {
     return this.request.patch(`${this.postsEndpoint}/${postId}`, {
       data: partial,
     });

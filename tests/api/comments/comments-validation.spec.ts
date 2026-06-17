@@ -46,7 +46,11 @@ test.describe("Comments - validation - name blank", () => {
     authedRequest,
   }) => {
     const comments = new CommentsService(authedRequest);
-    const payload = { name: "", email: randomEmail(), body: randomCommentBody() };
+    const payload = {
+      name: "",
+      email: randomEmail(),
+      body: randomCommentBody(),
+    };
     const res = await comments.create(parentPostId, payload);
     expect(res.status()).toBe(422);
     const body = await res.json();
@@ -104,6 +108,7 @@ test.describe("Comments - validation - name length BVA (lower + upper bounds)", 
 
       expect(res.status()).toBe(status);
       if (errorMessage !== null) {
+        // eslint-disable-next-line playwright/no-conditional-expect -- status asserted unconditionally above; only the failure-row message is guarded
         expect(body).toContainEqual({ field: "name", message: errorMessage });
       }
     });
@@ -123,7 +128,11 @@ test.describe("Comments - validation - email (blank + invalid format)", () => {
     authedRequest,
   }) => {
     const comments = new CommentsService(authedRequest);
-    const payload = { name: randomName(), email: "", body: randomCommentBody() };
+    const payload = {
+      name: randomName(),
+      email: "",
+      body: randomCommentBody(),
+    };
     const res = await comments.create(parentPostId, payload);
     expect(res.status()).toBe(422);
     const body = await res.json();
@@ -213,6 +222,7 @@ test.describe("Comments - validation - body length BVA (lower + upper bounds)", 
 
       expect(res.status()).toBe(status);
       if (errorMessage !== null) {
+        // eslint-disable-next-line playwright/no-conditional-expect -- status asserted unconditionally above; only the failure-row message is guarded
         expect(body).toContainEqual({ field: "body", message: errorMessage });
       }
     });

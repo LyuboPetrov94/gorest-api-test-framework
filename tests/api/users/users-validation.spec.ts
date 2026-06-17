@@ -214,6 +214,7 @@ test.describe("Users - validation - name length BVA (1-200)", () => {
 
       expect(res.status()).toBe(status);
       if (errorMessage !== null) {
+        // eslint-disable-next-line playwright/no-conditional-expect -- status asserted unconditionally above; only the failure-row message is guarded
         expect(body).toContainEqual({ field: "name", message: errorMessage });
       }
     });

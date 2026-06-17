@@ -76,10 +76,7 @@ export class TodosService {
     });
   }
 
-  async patch(
-    todoId: number,
-    partial: PatchTodoPayload,
-  ): Promise<APIResponse> {
+  async patch(todoId: number, partial: PatchTodoPayload): Promise<APIResponse> {
     return this.request.patch(`${this.todosEndpoint}/${todoId}`, {
       data: partial,
     });

@@ -100,6 +100,7 @@ test.describe("Users - schema validation", () => {
       const hasIdError = result.error.issues.some(
         (i) => i.path.map(String).join(".") === "id",
       );
+      // eslint-disable-next-line playwright/no-conditional-expect -- zod type-narrowing guard; success===false already asserted above
       expect(hasIdError).toBe(true);
     }
   });

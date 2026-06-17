@@ -278,7 +278,9 @@ test.describe("Todos - CRUD happy paths", () => {
     );
 
     // Move it BACKWARD to a past date - accepted, no temporal constraint
-    const pastPatch = await todos.patch(createBody.id, { due_on: "2020-01-15" });
+    const pastPatch = await todos.patch(createBody.id, {
+      due_on: "2020-01-15",
+    });
     expect(pastPatch.status()).toBe(200);
     expect((await pastPatch.json()).due_on).toBe(
       "2020-01-15T00:00:00.000+05:30",

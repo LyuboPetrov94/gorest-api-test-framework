@@ -121,6 +121,7 @@ test.describe("Comments - security - write-on-id no-auth (per-token isolation: 4
   // is an ISOLATION property, not just an id-not-found edge case.
   for (const [index, { verb, action }] of writeVerbs.entries()) {
     const tc = `TC0${index + 3}`; // TC03, TC04, TC05
+
     test(`${tc} - ${verb} /comments/{id} no Authorization - 404 'Resource not found'`, async () => {
       const ctx = await playwrightRequest.newContext({ baseURL: BASE_URL });
       try {
@@ -139,6 +140,7 @@ test.describe("Comments - security - write-on-id no-auth (per-token isolation: 4
 test.describe("Comments - security - write-on-id bogus token (token validation: 401)", () => {
   for (const [index, { verb, action }] of writeVerbs.entries()) {
     const tc = `TC0${index + 6}`; // TC06, TC07, TC08
+
     test(`${tc} - ${verb} /comments/{id} bogus token - 401 'Invalid token'`, async () => {
       const ctx = await playwrightRequest.newContext({
         baseURL: BASE_URL,
