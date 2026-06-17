@@ -147,12 +147,16 @@ GoRest's default token rate limit is **300 requests/minute** (a continuously-ref
 
 A GitHub Actions workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to `master`, on every pull request, and on manual dispatch:
 
-- **`test` job** - `npm ci` -> `npm run typecheck` -> `npm run test:api` (the full suite minus the `@ratelimit` burst). The `list` reporter prints one line per test to the step log, so every test conducted is visible directly in the run. The Playwright HTML report is uploaded as a build artifact on **every** run (pass or fail), retained 30 days. No browser binaries are installed: the API request context talks HTTP directly and needs none, so runs stay fast.
+- **`test` job** - `npm ci` -> `npm run typecheck` -> `npm run test:api` (the full suite minus the `@ratelimit` burst). The `list` reporter prints one line per test to the step log, so every test conducted is visible directly in the run, and a per-run results table (passed / failed / flaky / skipped) is written to the run's **Summary** tab. The Playwright HTML report is uploaded as a build artifact on **every** run (pass or fail), retained 30 days. No browser binaries are installed: the API request context talks HTTP directly and needs none, so runs stay fast.
 - **`rate-limit` job** - runs *after* `test` (`needs: test`) with a ~60 s cooldown so the token's 300/min bucket can refill before the burst deliberately drains it. It is **advisory** (`continue-on-error`): a missed `429` reflects the token's real-time bucket state, not a code defect, so it reports status without failing the build.
+- **`deploy-report` job** - on pushes to `master` only, publishes the HTML report to **GitHub Pages** so the latest run's report is viewable at a live URL (no artifact download needed).
 
 `workers` is pinned to 1 on CI (via `process.env.CI` in `playwright.config.ts`) to stay under the rate limit, and a `concurrency` guard cancels superseded runs so two runs never draw down the same token at once.
 
-**Required setup:** add your token as a repository secret named `GOREST_TOKEN` (Settings -> Secrets and variables -> Actions -> New repository secret). The `authedRequest` fixture throws at load time if it is missing, so CI fails loudly with a clear message rather than emitting silent 401s.
+**Required setup:**
+
+1. Add your token as a repository secret named `GOREST_TOKEN` (Settings -> Secrets and variables -> Actions -> New repository secret). The `authedRequest` fixture throws at load time if it is missing, so CI fails loudly with a clear message rather than emitting silent 401s.
+2. For the published report, enable GitHub Pages with Settings -> Pages -> Build and deployment -> Source: **GitHub Actions**. Until then the `deploy-report` job will fail; the `test` job is unaffected.
 
 ## API Call Budget
 
@@ -189,6 +193,25 @@ The `rate-limit.spec.ts` count (**2**) covers only TC01 (authed) + TC02 (anon), 
 **Assumptions:** a green run (config `retries: 1` only fires on failure), counted at `workers: 1`. Under parallel workers the file-scope `beforeAll`/`afterAll` hooks can run once per worker that picks up tests from a file, nudging the real total slightly higher.
 
 ## Architecture
+
+```mermaid
+flowchart TD
+    fixture["authedRequest fixture<br/>worker-scoped, Bearer token"]
+    spec["Spec file<br/>tests/api/.../*.spec.ts"]
+    service["Service wrapper<br/>services/*Service.ts"]
+    helpers["Helpers<br/>createParentUser, createParentPost, data"]
+    schema["zod schemas<br/>schemas/*.ts"]
+    api["GoRest API<br/>/public/v2"]
+
+    fixture -->|injected| spec
+    spec -->|instantiates| service
+    spec -->|setup and teardown| helpers
+    spec -->|validate response| schema
+    service -->|HTTP request| api
+    helpers -->|via services| api
+```
+
+A spec receives the worker-scoped `authedRequest` context from the fixture, hands it to a service wrapper (which owns the endpoint paths and verbs), and asserts on the response - optionally validating its shape against a zod schema. Helpers build parent resources for nested-resource setup. The spec itself never touches a raw URL or the Bearer token.
 
 ### Service Wrappers
 
