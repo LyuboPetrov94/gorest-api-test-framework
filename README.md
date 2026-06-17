@@ -38,7 +38,7 @@ GoRest is unusually well-suited for portfolio-grade API testing demonstrations:
 - **TypeScript** 6.x - strict mode
 - **zod** v4.x - runtime response schema validation (used in one demonstration spec)
 - **dotenv** - loads `GOREST_TOKEN` from `.env` at config-load time
-- **Node.js** 20+
+- **Node.js** 22+ (current maintenance LTS; Node 20 reached end-of-life in 2026)
 
 ## What This Demonstrates
 
@@ -88,7 +88,7 @@ gorest-api-tests/
 
 ### Prerequisites
 
-- Node.js 20 or higher
+- Node.js 22 or higher
 - npm
 - A GoRest access token - see step 2 below
 
@@ -147,7 +147,7 @@ GoRest's default token rate limit is **300 requests/minute** (a continuously-ref
 
 A GitHub Actions workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to `master`, on every pull request, and on manual dispatch:
 
-- **`test` job** - `npm ci` -> `npm run typecheck` -> `npm run test:api` (the full suite minus the `@ratelimit` burst). On failure it uploads the Playwright HTML report as a build artifact. No browser binaries are installed: the API request context talks HTTP directly and needs none, so runs stay fast.
+- **`test` job** - `npm ci` -> `npm run typecheck` -> `npm run test:api` (the full suite minus the `@ratelimit` burst). The `list` reporter prints one line per test to the step log, so every test conducted is visible directly in the run. The Playwright HTML report is uploaded as a build artifact on **every** run (pass or fail), retained 30 days. No browser binaries are installed: the API request context talks HTTP directly and needs none, so runs stay fast.
 - **`rate-limit` job** - runs *after* `test` (`needs: test`) with a ~60 s cooldown so the token's 300/min bucket can refill before the burst deliberately drains it. It is **advisory** (`continue-on-error`): a missed `429` reflects the token's real-time bucket state, not a code defect, so it reports status without failing the build.
 
 `workers` is pinned to 1 on CI (via `process.env.CI` in `playwright.config.ts`) to stay under the rate limit, and a `concurrency` guard cancels superseded runs so two runs never draw down the same token at once.

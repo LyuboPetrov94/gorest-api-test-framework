@@ -17,7 +17,10 @@ export default defineConfig({
   // has a raised limit, increase here. Hitting 429s in green tests? Lower further.
   workers: process.env.CI ? 1 : 2,
 
-  reporter: [["html", { open: "never" }]],
+  // "list" prints one line per test to the console (CI step log + local runs) -
+  // every test conducted is visible without opening the report. "html" produces
+  // the structured, browsable report that CI uploads as an artifact on every run.
+  reporter: [["list"], ["html", { open: "never" }]],
 
   use: {
     // Origin only - services carry the full `/public/v2/<resource>` path.
