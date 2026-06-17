@@ -15,6 +15,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    # No GOREST_TOKEN: ESLint and Prettier never touch the API. Runs in
+    # parallel with the test job.
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier check
+        run: npm run format:check
+
   test:
     name: API suite (typecheck + test:api)
     runs-on: ubuntu-latest

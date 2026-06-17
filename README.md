@@ -39,6 +39,7 @@ GoRest is unusually well-suited for portfolio-grade API testing demonstrations:
 - **zod** v4.x - runtime response schema validation (used in one demonstration spec)
 - **dotenv** - loads `GOREST_TOKEN` from `.env` at config-load time
 - **Node.js** 22+ (current maintenance LTS; Node 20 reached end-of-life in 2026)
+- **ESLint** 10 (flat config) with **typescript-eslint** + **eslint-plugin-playwright**, plus **Prettier** for formatting
 
 ## What This Demonstrates
 
@@ -73,6 +74,9 @@ gorest-api-tests/
 │   └── createParentPost.ts    # { postId, cleanup } - chains createParentUser -> post
 ├── playwright.config.ts       # Single `api` project; baseURL is origin-only (https://gorest.co.in)
 ├── tsconfig.json
+├── eslint.config.js           # ESLint flat config (TypeScript + Playwright rules)
+├── .prettierrc                # Prettier formatting options
+├── .prettierignore            # Prettier excludes (build output + docs)
 ├── .env.example               # Template - copy to .env and fill GOREST_TOKEN
 ├── .github/
 │   └── workflows/
@@ -112,7 +116,9 @@ cp .env.example .env
 ### Verify the setup
 
 ```bash
-npm run typecheck    # tsc --noEmit; should report no errors
+npm run typecheck     # tsc --noEmit; should report no errors
+npm run lint          # ESLint - code quality
+npm run format:check  # Prettier - formatting check (run `npm run format` to fix)
 ```
 
 ## Running Tests
@@ -147,6 +153,7 @@ GoRest's default token rate limit is **300 requests/minute** (a continuously-ref
 
 A GitHub Actions workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to `master`, on every pull request, and on manual dispatch:
 
+- **`lint` job** - runs ESLint and a Prettier formatting check; needs no token, so it runs in parallel with the suite.
 - **`test` job** - `npm ci` -> `npm run typecheck` -> `npm run test:api` (the full suite minus the `@ratelimit` burst). The `list` reporter prints one line per test to the step log, so every test conducted is visible directly in the run, and a per-run results table (passed / failed / flaky / skipped) is written to the run's **Summary** tab. The Playwright HTML report is uploaded as a build artifact on **every** run (pass or fail), retained 30 days. No browser binaries are installed: the API request context talks HTTP directly and needs none, so runs stay fast.
 - **`rate-limit` job** - runs *after* `test` (`needs: test`) with a ~60 s cooldown so the token's 300/min bucket can refill before the burst deliberately drains it. It is **advisory** (`continue-on-error`): a missed `429` reflects the token's real-time bucket state, not a code defect, so it reports status without failing the build.
 - **`deploy-report` job** - on pushes to `master` only, publishes the HTML report to **GitHub Pages** so the latest run's report is viewable at a live URL (no artifact download needed).
