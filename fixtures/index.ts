@@ -39,6 +39,12 @@ export const test = base.extend<{}, WorkerFixtures>({
       const ctx = await request.newContext({
         baseURL: BASE_URL,
         extraHTTPHeaders: { Authorization: `Bearer ${TOKEN}` },
+        // Per-request ceiling (default is 30s). GoRest normally responds in
+        // well under a second; capping at 15s means a stalled setup request
+        // fails fast with a clear timeout instead of eating the whole 30s
+        // beforeAll-hook budget - so a transient stall surfaces a meaningful
+        // error and the retry can recover (see the comments-security flake).
+        timeout: 15_000,
       });
       await use(ctx);
       await ctx.dispose();
