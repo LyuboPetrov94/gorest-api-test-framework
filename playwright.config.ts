@@ -1,9 +1,20 @@
 import { defineConfig } from "@playwright/test";
+import type { ReporterDescription } from "@playwright/test";
 import * as dotenv from "dotenv";
 
 // Load GOREST_TOKEN from .env at config load time. .env is gitignored;
 // .env.example is committed. See CLAUDE.md for token acquisition steps.
 dotenv.config({ quiet: true });
+
+// Reporters. "list" prints one line per test to the console (CI step log +
+// local runs) - every test is visible without opening the report. "html" is
+// the structured, browsable report uploaded as a CI artifact on every run. On
+// CI we also emit a JSON results file that the workflow turns into a per-run
+// summary table (see the "Test summary" step in .github/workflows/ci.yml).
+const reporter: ReporterDescription[] = [["list"], ["html", { open: "never" }]];
+if (process.env.CI) {
+  reporter.push(["json", { outputFile: "results.json" }]);
+}
 
 export default defineConfig({
   testDir: "./tests",
@@ -17,10 +28,7 @@ export default defineConfig({
   // has a raised limit, increase here. Hitting 429s in green tests? Lower further.
   workers: process.env.CI ? 1 : 2,
 
-  // "list" prints one line per test to the console (CI step log + local runs) -
-  // every test conducted is visible without opening the report. "html" produces
-  // the structured, browsable report that CI uploads as an artifact on every run.
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter,
 
   use: {
     // Origin only - services carry the full `/public/v2/<resource>` path.
