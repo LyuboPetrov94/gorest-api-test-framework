@@ -1,0 +1,28 @@
+# Dependabot keeps dependencies current and opens PRs when they fall behind.
+# This is what would have surfaced the "Node 20 deprecated on runners" warning
+# as a routine PR instead of a surprise in a CI run.
+version: 2
+updates:
+  # GitHub Actions used in .github/workflows (checkout, setup-node,
+  # upload-artifact, and the Pages actions).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+
+  # npm dependencies (Playwright, zod, typescript, @types/node, dotenv).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    # Group minor/patch bumps into one PR to cut noise; majors stay separate
+    # so a potentially-breaking upgrade is reviewed on its own.
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
