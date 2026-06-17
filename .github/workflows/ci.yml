@@ -16,10 +16,12 @@ concurrency:
 
 jobs:
   lint:
-    name: Lint and format
+    name: Static checks (lint, format, typecheck)
     runs-on: ubuntu-latest
-    # No GOREST_TOKEN: ESLint and Prettier never touch the API. Runs in
-    # parallel with the test job.
+    # No GOREST_TOKEN needed - none of these touch the API. Runs on EVERY event,
+    # including Dependabot and fork PRs (which do not receive repository
+    # secrets), so dependency bumps still get linted and type-checked. Parallel
+    # with the test job.
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -39,9 +41,19 @@ jobs:
       - name: Prettier check
         run: npm run format:check
 
+      - name: Type-check
+        run: npm run typecheck
+
   test:
     name: API suite (typecheck + test:api)
     runs-on: ubuntu-latest
+    # The API suite needs GOREST_TOKEN. Dependabot PRs and fork PRs do NOT
+    # receive repository secrets, so skip there (the lint job still lints and
+    # type-checks them); the full suite validates on every push to master.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     env:
       # Repository secret. Add via Settings -> Secrets and variables -> Actions.
       # The authedRequest fixture throws at load if this is missing, so a
