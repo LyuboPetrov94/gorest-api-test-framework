@@ -1,5 +1,7 @@
 # GoRest API Tests
 
+[![CI](https://github.com/LyuboPetrov94/gorest-api-tests/actions/workflows/ci.yml/badge.svg)](https://github.com/LyuboPetrov94/gorest-api-tests/actions/workflows/ci.yml)
+
 API testing framework for the [GoRest](https://gorest.co.in/) sandbox REST API, built with [Playwright](https://playwright.dev/) and TypeScript. Continuation of patterns developed in a prior UI + API testing framework, applied to a Bearer-token-authenticated API with per-token data isolation.
 
 ## Status
@@ -72,6 +74,9 @@ gorest-api-tests/
 ├── playwright.config.ts       # Single `api` project; baseURL is origin-only (https://gorest.co.in)
 ├── tsconfig.json
 ├── .env.example               # Template - copy to .env and fill GOREST_TOKEN
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # GitHub Actions - typecheck + API suite + advisory rate-limit job
 ├── .gitignore                 # .env, node_modules, test-results, playwright-report
 ├── CLAUDE.md                  # Project conventions (root)
 └── README.md                  # This file
@@ -95,7 +100,8 @@ npm install
 
 # 2. Get a GoRest access token
 #    Sign in at https://gorest.co.in/ with GitHub / Google / Microsoft.
-#    Generate a personal access token from the account dashboard.
+#    Generate a personal access token from the account dashboard
+#    (Account -> Access Tokens).
 
 # 3. Configure your token
 cp .env.example .env
@@ -136,6 +142,17 @@ The `@ratelimit`-tagged burst fires ~400 concurrent authed requests to deplete t
 ### Parallelism notes
 
 GoRest's default token rate limit is **300 requests/minute** (a continuously-refilling token bucket at ~5 req/sec, not a hard fixed window - so steady low-rate traffic effectively never depletes it; bursts can). `playwright.config.ts` defaults to 2 workers locally and 1 on CI, which stays comfortably under the limit. If your token has a raised rate limit, increase `workers` in the config. If you hit unexpected 429s, lower it.
+
+## Continuous Integration
+
+A GitHub Actions workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to `master`, on every pull request, and on manual dispatch:
+
+- **`test` job** - `npm ci` -> `npm run typecheck` -> `npm run test:api` (the full suite minus the `@ratelimit` burst). On failure it uploads the Playwright HTML report as a build artifact. No browser binaries are installed: the API request context talks HTTP directly and needs none, so runs stay fast.
+- **`rate-limit` job** - runs *after* `test` (`needs: test`) with a ~60 s cooldown so the token's 300/min bucket can refill before the burst deliberately drains it. It is **advisory** (`continue-on-error`): a missed `429` reflects the token's real-time bucket state, not a code defect, so it reports status without failing the build.
+
+`workers` is pinned to 1 on CI (via `process.env.CI` in `playwright.config.ts`) to stay under the rate limit, and a `concurrency` guard cancels superseded runs so two runs never draw down the same token at once.
+
+**Required setup:** add your token as a repository secret named `GOREST_TOKEN` (Settings -> Secrets and variables -> Actions -> New repository secret). The `authedRequest` fixture throws at load time if it is missing, so CI fails loudly with a clear message rather than emitting silent 401s.
 
 ## API Call Budget
 

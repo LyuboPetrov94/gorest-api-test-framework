@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# One GoRest token = one 300 req/min bucket shared across every run. Never let
+# two runs draw it down at the same time: cancel an in-progress run for this
+# ref when a newer one starts.
+concurrency:
+  group: gorest-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: API suite (typecheck + test:api)
+    runs-on: ubuntu-latest
+    env:
+      # Repository secret. Add via Settings -> Secrets and variables -> Actions.
+      # The authedRequest fixture throws at load if this is missing, so a
+      # missing secret fails loudly instead of emitting silent 401s.
+      GOREST_TOKEN: ${{ secrets.GOREST_TOKEN }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Matches the README's documented minimum (Node 20+).
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      # No `npx playwright install`: the API request context (authedRequest)
+      # talks HTTP directly and needs no browser binaries. workers:1 on CI is
+      # set in playwright.config.ts via process.env.CI, keeping the suite under
+      # the rate limit.
+      - name: Run API tests (excludes @ratelimit burst)
+        run: npm run test:api
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  rate-limit:
+    name: Rate-limit burst (advisory)
+    needs: test
+    runs-on: ubuntu-latest
+    # Advisory: a 429 depends on the token's real-time bucket state, not on a
+    # code defect, so a miss reports status without turning the build red.
+    continue-on-error: true
+    env:
+      GOREST_TOKEN: ${{ secrets.GOREST_TOKEN }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Cooldown: let the token's bucket refill after the `test` job before the
+      # burst deliberately drains it. The jobs run on separate runners but share
+      # one token; provisioning + npm ci already adds delay, this is belt-and-braces.
+      - name: Cool down (let the token bucket refill)
+        run: sleep 60
+
+      - name: Run @ratelimit burst
+        run: npm run test:ratelimit
