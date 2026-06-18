@@ -285,6 +285,7 @@ Highlights worth a look, each linked to the spec that demonstrates it:
 | File | What's in it |
 |------|--------------|
 | [`README.md`](README.md) | This file - overview, scope, getting started |
+| [`CHANGELOG.md`](CHANGELOG.md) | Notable changes per version (Keep a Changelog format) |
 | [`TEST_PLAN.md`](TEST_PLAN.md) | Coverage matrix - TC counts per resource and per sandbox spec |
 | [`CLAUDE.md`](CLAUDE.md) | Project-wide conventions and the inspect-and-approve workflow rules |
 | [`tests/api/CLAUDE.md`](tests/api/CLAUDE.md) | API conventions, the 5 locked project-specific decisions, schema-validation discipline, gotcha catalogue (fills empirically) |
