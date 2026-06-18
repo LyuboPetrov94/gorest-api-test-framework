@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.1] - 2026-06-18
 
 ### Changed
 
@@ -66,7 +66,7 @@ Initial release - the complete GoRest API test framework.
 - **Worker-scoped `authedRequest` fixture** injecting the Bearer token once per worker; parent-resource helpers for nested-resource setup.
 - **GitHub Actions CI** (API suite + advisory rate-limit burst) and project documentation: README, TEST_PLAN, and an empirically-built gotcha catalogue in `tests/api/CLAUDE.md`.
 
-[Unreleased]: https://github.com/LyuboPetrov94/gorest-api-tests/compare/v2.1.0...HEAD
+[2.1.1]: https://github.com/LyuboPetrov94/gorest-api-tests/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/LyuboPetrov94/gorest-api-tests/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/LyuboPetrov94/gorest-api-tests/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/LyuboPetrov94/gorest-api-tests/releases/tag/v1.0.0
