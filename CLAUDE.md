@@ -70,14 +70,17 @@ Before writing any code for a new feature:
 
 ## Running Tests
 ```bash
-npm test                                        # all tests EXCEPT the rate-limit burst (--grep-invert @ratelimit)
+npm test                                        # default suite, EXCLUDES @ratelimit + @isolation (--grep-invert "@ratelimit|@isolation")
 npm run test:ratelimit                          # ONLY the @ratelimit burst (rate-limit.spec.ts TC03) - run in isolation
+npm run test:isolation                          # ONLY the @isolation cross-account spec - needs GOREST_TOKEN_SUB (2nd account)
 npx playwright test tests/api/<resource>        # specific resource
 npx playwright test --project=api               # API only
 npm run report                                  # HTML report
 ```
 
 The `@ratelimit`-tagged burst (`tests/api/sandbox/rate-limit.spec.ts` TC03) fires ~400 concurrent **authed** requests to deliberately deplete the per-token 300/min bucket and prove 429 enforcement. It is excluded from the default run (`npm test` / `npm run test:api`) so it does not starve other authed specs' minute budget; run it alone via `npm run test:ratelimit`, and let the bucket recover (~60s) before running other authed specs. The rate-limit spec's header-contract TCs (TC01/TC02) are untagged and stay in the default suite.
+
+The `@isolation`-tagged cross-account spec (`tests/api/users/users-isolation.spec.ts`) is also excluded from the default run: it needs a token from a SECOND, separate account (`GOREST_TOKEN_SUB`), so the main suite stays runnable with one token. Run it via `npm run test:isolation`; in CI it has its own `isolation` job (not advisory), so a lapsed second-account token reddens only that job, not the main suite.
 
 Retries enabled (1) locally and on CI. Screenshot / video / trace use `*-on-failure` semantics - artifacts retained only when the final outcome is failed.
 

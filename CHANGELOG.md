@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-06-18
+
+### Added
+
+- A dedicated **`isolation`** CI job and a **`test:isolation`** npm script for the cross-account spec.
+
+### Changed
+
+- The cross-account isolation spec is now tagged `@isolation` and excluded from the default run (`npm test` / `npm run test:api` use `--grep-invert "@ratelimit|@isolation"`), so the main suite no longer needs a second-account token. A lapsed `GOREST_TOKEN_SUB` now reddens only the `isolation` job - which is **not** advisory, so a genuine isolation regression still shows red - rather than the main API suite. The default-suite API call budget returns to **367** (the isolation spec's ~17 calls - ~8 MAIN + 9 SUB - now run separately, like the `@ratelimit` burst); the default `npm test` run is **194** tests (202 total minus the 7 `@isolation` and 1 `@ratelimit`).
+
+### Fixed
+
+- Docs: corrected the TEST_PLAN runtime to Node 22 (was stale at `20+`; the README and CI already required 22).
+
 ## [2.0.0] - 2026-06-18
 
 Adds cross-account data-isolation coverage and the supporting two-token setup.
@@ -46,5 +60,6 @@ Initial release - the complete GoRest API test framework.
 - **Worker-scoped `authedRequest` fixture** injecting the Bearer token once per worker; parent-resource helpers for nested-resource setup.
 - **GitHub Actions CI** (API suite + advisory rate-limit burst) and project documentation: README, TEST_PLAN, and an empirically-built gotcha catalogue in `tests/api/CLAUDE.md`.
 
+[2.1.0]: https://github.com/LyuboPetrov94/gorest-api-tests/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/LyuboPetrov94/gorest-api-tests/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/LyuboPetrov94/gorest-api-tests/releases/tag/v1.0.0

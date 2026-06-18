@@ -107,12 +107,12 @@ These exercise sandbox features that do not fit the standard CRUD/validation/sec
 | Language | TypeScript 6.x (strict) |
 | Schema validation | zod v4.x |
 | Config loading | dotenv (loads `GOREST_TOKEN_MAIN` + `GOREST_TOKEN_SUB` at config-load time) |
-| Runtime | Node.js 20+ |
+| Runtime | Node.js 22+ |
 | Token | `GOREST_TOKEN_MAIN` (main account) + `GOREST_TOKEN_SUB` (second account, isolation spec only) in `.env` (gitignored); see README [Getting Started](README.md#getting-started) |
 | Parallelism | `fullyParallel: true`; `workers: 2` local / `1` on CI - tuned to stay under the 300 req/min token budget |
 | Retries | `retries: 1` (absorbs transient network flakiness) |
 
-**Rate-limit isolation:** the rate-limit burst (`rate-limit.spec.ts` TC03, tagged `@ratelimit`) is excluded from the default run and executed alone via `npm run test:ratelimit`, so its ~400-request burst does not starve other authed specs' minute budget. See README [Running Tests](README.md#running-tests).
+**Isolated specs (own runs / CI jobs):** two specs are tagged out of the default run (`--grep-invert "@ratelimit|@isolation"`) and run on their own. (1) The rate-limit burst (`rate-limit.spec.ts` TC03, `@ratelimit`) via `npm run test:ratelimit`, so its ~400-request burst does not starve other authed specs' minute budget. (2) The cross-account isolation spec (`users-isolation.spec.ts`, `@isolation`) via `npm run test:isolation`, because it needs a second account's token (`GOREST_TOKEN_SUB`) and gets its own CI job so a lapsed second token reddens only that job. See README [Running Tests](README.md#running-tests).
 
 ## 7. Entry & Exit Criteria
 

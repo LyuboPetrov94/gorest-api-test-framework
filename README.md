@@ -134,14 +134,17 @@ npm run format:check  # Prettier - formatting check (run `npm run format` to fix
 ## Running Tests
 
 ```bash
-# All tests EXCEPT the rate-limit burst (excludes the @ratelimit tag)
+# Default suite - excludes the @ratelimit burst AND the @isolation spec
 npm test
 
-# API specs only (single `api` project, no browser needed) - also excludes @ratelimit
+# API specs only (single `api` project, no browser needed) - same exclusions
 npm run test:api
 
 # ONLY the rate-limit burst (rate-limit.spec.ts TC03) - run in isolation
 npm run test:ratelimit
+
+# ONLY the cross-account isolation spec - needs GOREST_TOKEN_SUB (second account)
+npm run test:isolation
 
 # Specific resource
 npx playwright test tests/api/users
@@ -155,6 +158,8 @@ npm run report
 
 The `@ratelimit`-tagged burst fires ~400 concurrent authed requests to deplete the per-token 300/min bucket and prove `429` enforcement, so it is excluded from the default run (it would otherwise starve other authed specs' budget). Run it alone via `npm run test:ratelimit`, and let the bucket recover (~60 s) before running the authed suite again.
 
+The `@isolation`-tagged cross-account spec is likewise excluded from the default run - it requires a token from a **second, separate account** (`GOREST_TOKEN_SUB`), so the main suite stays runnable with just the one token. Run it via `npm run test:isolation`. (In CI it gets its own job, so a lapsed second-account token reddens only that job, not the main suite.)
+
 ### Parallelism notes
 
 GoRest's default token rate limit is **300 requests/minute** (a continuously-refilling token bucket at ~5 req/sec, not a hard fixed window - so steady low-rate traffic effectively never depletes it; bursts can). `playwright.config.ts` defaults to 2 workers locally and 1 on CI, which stays comfortably under the limit. If your token has a raised rate limit, increase `workers` in the config. If you hit unexpected 429s, lower it.
@@ -164,7 +169,8 @@ GoRest's default token rate limit is **300 requests/minute** (a continuously-ref
 A GitHub Actions workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push to `master`, on every pull request, and on manual dispatch:
 
 - **`lint` job** - runs ESLint and a Prettier formatting check; needs no token, so it runs in parallel with the suite.
-- **`test` job** - `npm ci` -> `npm run typecheck` -> `npm run test:api` (the full suite minus the `@ratelimit` burst). The `list` reporter prints one line per test to the step log, so every test conducted is visible directly in the run, and a per-run results table (passed / failed / flaky / skipped) is written to the run's **Summary** tab. The Playwright HTML report is uploaded as a build artifact on **every** run (pass or fail), retained 30 days. No browser binaries are installed: the API request context talks HTTP directly and needs none, so runs stay fast.
+- **`test` job** - `npm ci` -> `npm run typecheck` -> `npm run test:api` (the full suite minus the `@ratelimit` burst and the `@isolation` spec). The `list` reporter prints one line per test to the step log, so every test conducted is visible directly in the run, and a per-run results table (passed / failed / flaky / skipped) is written to the run's **Summary** tab. The Playwright HTML report is uploaded as a build artifact on **every** run (pass or fail), retained 30 days. No browser binaries are installed: the API request context talks HTTP directly and needs none, so runs stay fast.
+- **`isolation` job** - runs the `@isolation` cross-account spec (`npm run test:isolation`) with both `GOREST_TOKEN_MAIN` and `GOREST_TOKEN_SUB`. Runs in parallel with `test` (it is light and finishes before the rate-limit burst). Kept as its own job - **not** advisory - so a real isolation regression shows red, but a lapsed second-account token reddens only this job, not the main suite.
 - **`rate-limit` job** - runs *after* `test` (`needs: test`) with a ~60 s cooldown so the token's 300/min bucket can refill before the burst deliberately drains it. It is **advisory** (`continue-on-error`): a missed `429` reflects the token's real-time bucket state, not a code defect, so it reports status without failing the build.
 - **`deploy-report` job** - on pushes to `master` only, publishes the HTML report to **GitHub Pages** so the latest run's report is viewable at a live URL (no artifact download needed).
 
@@ -172,7 +178,7 @@ A GitHub Actions workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml
 
 **Required setup:**
 
-1. Add your main token as a repository secret named `GOREST_TOKEN_MAIN` (Settings -> Secrets and variables -> Actions -> New repository secret). The `authedRequest` fixture throws at load time if it is missing, so CI fails loudly with a clear message rather than emitting silent 401s. For the cross-account isolation spec, also add `GOREST_TOKEN_SUB` (a token from a second, separate GoRest account); the `test` job passes both to the suite.
+1. Add your main token as a repository secret named `GOREST_TOKEN_MAIN` (Settings -> Secrets and variables -> Actions -> New repository secret). The `authedRequest` fixture throws at load time if it is missing, so CI fails loudly with a clear message rather than emitting silent 401s. Also add `GOREST_TOKEN_SUB` (a token from a second, separate GoRest account); the `isolation` job uses both tokens, the other jobs need only `GOREST_TOKEN_MAIN`.
 2. For the published report, enable GitHub Pages with Settings -> Pages -> Build and deployment -> Source: **GitHub Actions**. Until then the `deploy-report` job will fail; the `test` job is unaffected.
 
 ## API Call Budget
@@ -185,7 +191,6 @@ Total HTTP requests a full green run issues to GoRest, by spec. Updated as specs
 | Users | `users-validation.spec.ts` | 26 |
 | Users | `users-security.spec.ts` | 13 |
 | Users | `users-schema.spec.ts` | 6 |
-| Users | `users-isolation.spec.ts` | 17 |
 | Posts | `posts-crud.spec.ts` | 30 |
 | Posts | `posts-validation.spec.ts` | 39 |
 | Posts | `posts-security.spec.ts` | 17 |
@@ -198,15 +203,17 @@ Total HTTP requests a full green run issues to GoRest, by spec. Updated as specs
 | Sandbox | `force-status.spec.ts` | 10 |
 | Sandbox | `delay.spec.ts` | 6 |
 | Sandbox | `rate-limit.spec.ts` | 2 |
-| | **Total** | **384** |
+| | **Total** | **367** |
 
-Per-resource subtotals: Users **80**, Posts **86**, Comments **95**, Todos **105**, Sandbox **18**.
+Per-resource subtotals: Users **63**, Posts **86**, Comments **95**, Todos **105**, Sandbox **18**.
 
-The `rate-limit.spec.ts` count (**2**) covers only TC01 (authed) + TC02 (anon), which run in the default suite. Its TC03 burst is **excluded from the default run** (tagged `@ratelimit`) and issues **~400 additional authed requests** when run in isolation via `npm run test:ratelimit` - by design depleting the token's minute budget to provoke a real `429`. That ~400 is not part of the 384 default-suite total.
+The `rate-limit.spec.ts` count (**2**) covers only TC01 (authed) + TC02 (anon), which run in the default suite. Its TC03 burst is **excluded from the default run** (tagged `@ratelimit`) and issues **~400 additional authed requests** when run in isolation via `npm run test:ratelimit` - by design depleting the token's minute budget to provoke a real `429`. That ~400 is not part of the 367 default-suite total.
 
-**Rate-limit relevance:** GoRest's 300 req/min limit is **per access token**, so not every call above counts against your main token. Of the 384 total, **30 are anonymous** (no `Authorization` header) and **27 use a deliberately-invalid bogus token** (`deadbeef`) - concentrated in the security specs' auth-gate negatives, the anonymous `GET` list in each CRUD spec, and the anonymous `force_status` / `delay` / rate-limit TCs in the sandbox specs. Neither group draws down a real token's budget (anonymous carries no token; the bogus token is a different, invalid identity rejected at validation). A further **9** belong to the **second account's token** (`GOREST_TOKEN_SUB`, used by the isolation spec) - its own separate 300/min bucket. That leaves **~318** counting toward the MAIN token's 300/min - and spread across a run lasting well over a minute, with the bucket continuously refilling, a normal run never approaches the ceiling. (The `@ratelimit` burst is the deliberate exception, isolated out of the default run for exactly this reason.)
+The **cross-account isolation spec** (`users-isolation.spec.ts`, 7 TCs) is likewise **excluded from the default run** (tagged `@isolation`) and runs separately via `npm run test:isolation` (its own CI job). It issues **17 requests - ~8 on the MAIN token and 9 on the SECOND account's token** (`GOREST_TOKEN_SUB`, a separate 300/min bucket). That 17 is not part of the 367 default-suite total either.
 
-**What's counted (in the 384 total):** every real HTTP request to GoRest - test-body requests, file-scope `beforeAll`/`afterAll` setup and teardown, `afterEach` cleanup `DELETE`s (including the second `DELETE` in idempotency/state-transition TCs, which returns 404 but is still a call), and parent-helper calls (`createParentUser` = 1 POST + 1 DELETE; `createParentPost` = 2 POSTs + 1 DELETE). Anonymous and bogus-token requests count too (they hit the server, returning 200/401/404). `newContext()` / `dispose()` are *not* counted - they create/close a client context without issuing a request.
+**Rate-limit relevance:** GoRest's 300 req/min limit is **per access token**, so not every call above counts against your token. Of the 367 total, **30 are anonymous** (no `Authorization` header) and **27 use a deliberately-invalid bogus token** (`deadbeef`) - concentrated in the security specs' auth-gate negatives, the anonymous `GET` list in each CRUD spec, and the anonymous `force_status` / `delay` / rate-limit TCs in the sandbox specs. Neither group draws down the `.env` token's budget (anonymous carries no token; the bogus token is a different, invalid identity rejected at validation). So only **~310** requests count toward the token's 300/min - and spread across a run lasting well over a minute, with the bucket continuously refilling, a normal run never approaches the ceiling. (The `@ratelimit` burst and the `@isolation` spec are the deliberate exceptions, isolated out of the default run.)
+
+**What's counted (in the 367 total):** every real HTTP request to GoRest - test-body requests, file-scope `beforeAll`/`afterAll` setup and teardown, `afterEach` cleanup `DELETE`s (including the second `DELETE` in idempotency/state-transition TCs, which returns 404 but is still a call), and parent-helper calls (`createParentUser` = 1 POST + 1 DELETE; `createParentPost` = 2 POSTs + 1 DELETE). Anonymous and bogus-token requests count too (they hit the server, returning 200/401/404). `newContext()` / `dispose()` are *not* counted - they create/close a client context without issuing a request.
 
 **Assumptions:** a green run (config `retries: 1` only fires on failure), counted at `workers: 1`. Under parallel workers the file-scope `beforeAll`/`afterAll` hooks can run once per worker that picks up tests from a file, nudging the real total slightly higher.
 

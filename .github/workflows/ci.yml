@@ -47,21 +47,21 @@ jobs:
   test:
     name: API suite (typecheck + test:api)
     runs-on: ubuntu-latest
-    # The API suite needs GOREST_TOKEN_MAIN (and GOREST_TOKEN_SUB for the
-    # cross-account isolation spec). Dependabot PRs and fork PRs do NOT receive
-    # repository secrets, so skip there (the lint job still lints and
-    # type-checks them); the full suite validates on every push to master.
+    # The API suite needs GOREST_TOKEN_MAIN. (The cross-account isolation spec
+    # is excluded here - tagged @isolation - and runs in its own `isolation`
+    # job below.) Dependabot PRs and fork PRs do NOT receive repository secrets,
+    # so skip there (the lint job still lints and type-checks them); the full
+    # suite validates on every push to master.
     if: >-
       github.event_name != 'pull_request' ||
       (github.actor != 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository)
     env:
-      # Repository secrets. Add via Settings -> Secrets and variables -> Actions.
+      # Repository secret. Add via Settings -> Secrets and variables -> Actions.
       # authedRequest throws at load if GOREST_TOKEN_MAIN is missing (fails
-      # loudly instead of silent 401s). GOREST_TOKEN_SUB is a token from a
-      # SECOND GoRest account, used only by the cross-account isolation spec.
+      # loudly instead of silent 401s). GOREST_TOKEN_SUB is NOT needed here -
+      # the spec that uses it runs in the separate `isolation` job below.
       GOREST_TOKEN_MAIN: ${{ secrets.GOREST_TOKEN_MAIN }}
-      GOREST_TOKEN_SUB: ${{ secrets.GOREST_TOKEN_SUB }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -84,7 +84,7 @@ jobs:
       # talks HTTP directly and needs no browser binaries. workers:1 on CI is
       # set in playwright.config.ts via process.env.CI, keeping the suite under
       # the rate limit.
-      - name: Run API tests (excludes @ratelimit burst)
+      - name: Run API tests (excludes @ratelimit + @isolation)
         run: npm run test:api
 
       # Turn the JSON results (emitted by the json reporter on CI) into a
@@ -127,6 +127,39 @@ jobs:
           path: playwright-report/
           retention-days: 30
           if-no-files-found: error
+
+  isolation:
+    name: Cross-account isolation
+    runs-on: ubuntu-latest
+    # Needs BOTH a main and a second-account token, neither of which secret-less
+    # Dependabot/fork PRs receive - so skip there, same guard as `test`. Runs in
+    # PARALLEL with `test` (it is light: ~17 requests, mostly on the second
+    # account's separate bucket) and finishes well before the rate-limit burst.
+    # NOT advisory: a real isolation regression should show red. But it is its
+    # own job, so a lapsed second-account token reddens only THIS job - the main
+    # suite stays green and the failure is obviously the second-account one.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    env:
+      GOREST_TOKEN_MAIN: ${{ secrets.GOREST_TOKEN_MAIN }}
+      GOREST_TOKEN_SUB: ${{ secrets.GOREST_TOKEN_SUB }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run cross-account isolation spec (@isolation)
+        run: npm run test:isolation
 
   rate-limit:
     name: Rate-limit burst (advisory)
