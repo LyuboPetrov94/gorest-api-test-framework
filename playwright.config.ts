@@ -7,14 +7,22 @@ import * as dotenv from "dotenv";
 dotenv.config({ quiet: true });
 
 // Reporters. "list" prints one line per test to the console (CI step log +
-// local runs) - every test is visible without opening the report. "html" is
-// the structured, browsable report uploaded as a CI artifact on every run. On
-// CI we also emit a JSON results file that the workflow turns into a per-run
-// summary table (see the "Test summary" step in .github/workflows/ci.yml).
-const reporter: ReporterDescription[] = [["list"], ["html", { open: "never" }]];
-if (process.env.CI) {
-  reporter.push(["json", { outputFile: "results.json" }]);
-}
+// local runs) - every test is visible without opening the report.
+//
+// On CI the suite is split across three jobs that each run a different slice
+// (default / @isolation / @ratelimit), so each emits a "blob" report under a
+// unique filename (PW_BLOB_NAME). The `merge-report` job in
+// .github/workflows/ci.yml combines all the blobs into ONE HTML report covering
+// every test, which `deploy-report` publishes to GitHub Pages. "json"
+// (results.json) still feeds the per-run summary table (the "Test summary"
+// step). Locally we just want the browsable "html" report.
+const reporter: ReporterDescription[] = process.env.CI
+  ? [
+      ["list"],
+      ["blob", { fileName: `${process.env.PW_BLOB_NAME || "report"}.zip` }],
+      ["json", { outputFile: "results.json" }],
+    ]
+  : [["list"], ["html", { open: "never" }]];
 
 export default defineConfig({
   testDir: "./tests",

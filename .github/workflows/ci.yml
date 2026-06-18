@@ -62,6 +62,8 @@ jobs:
       # loudly instead of silent 401s). GOREST_TOKEN_SUB is NOT needed here -
       # the spec that uses it runs in the separate `isolation` job below.
       GOREST_TOKEN_MAIN: ${{ secrets.GOREST_TOKEN_MAIN }}
+      # Unique blob filename so merge-report can combine every job's results.
+      PW_BLOB_NAME: main
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -117,14 +119,14 @@ jobs:
             }
           '
 
-      # Always upload the HTML report - kept even when every test passes, not
-      # just on failure - so each run leaves a structured, browsable artifact.
-      - name: Upload Playwright report
+      # Upload this job's blob report (always, even on failure) for merge-report
+      # to combine with the isolation + rate-limit blobs into one HTML report.
+      - name: Upload blob report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
-          path: playwright-report/
+          name: blob-report-main
+          path: blob-report/
           retention-days: 30
           if-no-files-found: error
 
@@ -145,6 +147,7 @@ jobs:
     env:
       GOREST_TOKEN_MAIN: ${{ secrets.GOREST_TOKEN_MAIN }}
       GOREST_TOKEN_SUB: ${{ secrets.GOREST_TOKEN_SUB }}
+      PW_BLOB_NAME: isolation
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -161,6 +164,15 @@ jobs:
       - name: Run cross-account isolation spec (@isolation)
         run: npm run test:isolation
 
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-report-isolation
+          path: blob-report/
+          retention-days: 30
+          if-no-files-found: error
+
   rate-limit:
     name: Rate-limit burst (advisory)
     needs: test
@@ -172,6 +184,7 @@ jobs:
       # Rate-limit burst uses the MAIN token only (authedRequest); no second
       # account is involved.
       GOREST_TOKEN_MAIN: ${{ secrets.GOREST_TOKEN_MAIN }}
+      PW_BLOB_NAME: ratelimit
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -194,12 +207,61 @@ jobs:
       - name: Run @ratelimit burst
         run: npm run test:ratelimit
 
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-report-ratelimit
+          path: blob-report/
+          retention-days: 30
+          if-no-files-found: error
+
+  merge-report:
+    name: Merge reports (all jobs)
+    needs: [test, isolation, rate-limit]
+    # Combine the three jobs' blob reports into ONE HTML report covering every
+    # test. Runs on master pushes only; `!cancelled()` lets it run even when a
+    # test job failed, so the published report always reflects the COMPLETE
+    # latest results (including any reds). PRs do not publish.
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download all blob reports
+        uses: actions/download-artifact@v8
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge blobs into one HTML report (all tests)
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Upload merged HTML report
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: error
+
   deploy-report:
     name: Publish report to GitHub Pages
-    needs: test
-    # Only publish from master pushes - PRs can't deploy Pages, and we don't
-    # want PR runs overwriting the published report. (needs: test means this is
-    # skipped if the suite failed, so only passing reports get published.)
+    needs: merge-report
+    # Publishes the MERGED report (all jobs) from master pushes only - PRs can't
+    # deploy Pages. merge-report runs even when a test job failed, so the
+    # published report always reflects the complete latest results.
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     # Pages deployment needs these scopes; granted only to this job.
@@ -214,7 +276,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download the HTML report (from the test job)
+      - name: Download the merged HTML report
         uses: actions/download-artifact@v8
         with:
           name: playwright-report
