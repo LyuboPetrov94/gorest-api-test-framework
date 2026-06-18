@@ -6,21 +6,23 @@ API testing framework for the [GoRest](https://gorest.co.in/) sandbox REST API, 
 
 ## Status
 
-**Complete - 195 test cases, all green.** All four standard resources are covered end-to-end (CRUD, validation, security, plus a zod schema demonstration on Users), and all three GoRest-specific sandbox bonus specs are done. See [TEST_PLAN.md](TEST_PLAN.md) for the live coverage matrix and [Notable Patterns](#notable-patterns) for the highlights.
+**Complete - 202 test cases, all green.** All four standard resources are covered end-to-end (CRUD, validation, security, plus a zod schema demonstration on Users), all three GoRest-specific sandbox bonus specs are done, and a cross-account data-isolation spec proves per-account scoping with a second account's token. See [TEST_PLAN.md](TEST_PLAN.md) for the live coverage matrix and [Notable Patterns](#notable-patterns) for the highlights.
 
 ### Coverage
 
-| Resource | CRUD | Validation | Security | Schema | Total |
-|----------|-----:|-----------:|---------:|-------:|------:|
-| Users    | 8  | 16 | 11 | 4 | 39 |
-| Posts    | 11 | 19 | 13 | - | 43 |
-| Comments | 11 | 23 | 13 | - | 47 |
-| Todos    | 15 | 19 | 13 | - | 47 |
-| **Subtotal** | **45** | **77** | **50** | **4** | **176** |
+| Resource | CRUD | Validation | Security | Schema | Isolation | Total |
+|----------|-----:|-----------:|---------:|-------:|----------:|------:|
+| Users    | 8  | 16 | 11 | 4 | 7 | 46 |
+| Posts    | 11 | 19 | 13 | - | - | 43 |
+| Comments | 11 | 23 | 13 | - | - | 47 |
+| Todos    | 15 | 19 | 13 | - | - | 47 |
+| **Subtotal** | **45** | **77** | **50** | **4** | **7** | **183** |
 
 Bonus sandbox specs (GoRest-specific capabilities): **force-status** 10 · **delay** 6 · **rate-limit** 3 = **19**.
 
-**Grand total: 195 TCs.**
+The **Isolation** column is the cross-account isolation spec (`users-isolation.spec.ts`) - Users is the single carrier because token scoping is a platform-wide property, not per-resource logic; it needs a second account's token.
+
+**Grand total: 202 TCs.**
 
 ## Why GoRest
 
@@ -37,7 +39,7 @@ GoRest is unusually well-suited for portfolio-grade API testing demonstrations:
 - **Playwright** v1.60 - test runner, API request context
 - **TypeScript** 6.x - strict mode
 - **zod** v4.x - runtime response schema validation (used in one demonstration spec)
-- **dotenv** - loads `GOREST_TOKEN` from `.env` at config-load time
+- **dotenv** - loads `GOREST_TOKEN_MAIN` (and `GOREST_TOKEN_SUB`) from `.env` at config-load time
 - **Node.js** 22+ (current maintenance LTS; Node 20 reached end-of-life in 2026)
 - **ESLint** 10 (flat config) with **typescript-eslint** + **eslint-plugin-playwright**, plus **Prettier** for formatting
 
@@ -47,6 +49,7 @@ GoRest is unusually well-suited for portfolio-grade API testing demonstrations:
 - **Worker-scoped authenticated request fixture** - `authedRequest` injects the Bearer token once per worker; tests reuse the context
 - **ISTQB test design applied per resource** - equivalence partitioning, 3-point boundary value analysis, decision tables, and state-transition coverage
 - **Auth-gate negative coverage** - both EP classes on every authed write verb (no token vs. invalid token - GoRest returns distinct responses for each)
+- **Cross-account data isolation** - a second-account token proves GoRest scopes data per account, not per token: a valid token gets `404` on another account's records (and `200 []` on nested lists), verified with positive controls and post-write integrity re-reads
 - **Runtime schema validation** with strict-mode `zod` - a demonstration spec on `POST /users`, reused across GET-by-id and the list endpoint, with a negative-of-schema unit test
 - **Fault-injection / resilience testing** - the sandbox specs exercise forced error statuses (`?force_status`), slow responses (`?delay`, with a BVA on the 5 s cap), and real rate-limit `429` enforcement via a concurrent burst
 - **Per-subtree documentation** - `tests/api/CLAUDE.md` carries API-specific conventions, the locked design decisions, and an empirically-built gotcha catalogue
@@ -58,7 +61,7 @@ gorest-api-tests/
 ├── tests/
 │   └── api/
 │       ├── CLAUDE.md          # API conventions, the 5 locked decisions, gotcha catalogue
-│       ├── users/             # crud · validation · security · schema
+│       ├── users/             # crud · validation · security · schema · isolation
 │       ├── posts/             # crud · validation · security
 │       ├── comments/          # crud · validation · security
 │       ├── todos/             # crud · validation · security
@@ -67,7 +70,7 @@ gorest-api-tests/
 ├── schemas/
 │   └── UserSchemas.ts         # zod response-shape schemas (Users demonstration)
 ├── fixtures/
-│   └── index.ts               # authedRequest (worker-scoped Bearer-token APIRequestContext)
+│   └── index.ts               # authedRequest + authedRequestSub (worker-scoped Bearer-token contexts)
 ├── helpers/
 │   ├── data.ts                # randomEmail, randomName, randomString
 │   ├── createParentUser.ts    # { id, cleanup } for nested-resource setup
@@ -77,7 +80,7 @@ gorest-api-tests/
 ├── eslint.config.js           # ESLint flat config (TypeScript + Playwright rules)
 ├── .prettierrc                # Prettier formatting options
 ├── .prettierignore            # Prettier excludes (build output + docs)
-├── .env.example               # Template - copy to .env and fill GOREST_TOKEN
+├── .env.example               # Template - copy to .env and fill GOREST_TOKEN_MAIN (+ _SUB)
 ├── .github/
 │   └── workflows/
 │       └── ci.yml             # GitHub Actions - typecheck + API suite + advisory rate-limit job
@@ -94,7 +97,7 @@ gorest-api-tests/
 
 - Node.js 22 or higher
 - npm
-- A GoRest access token - see step 2 below
+- A GoRest access token (and optionally a second account's token for the cross-account isolation spec) - see step 2 below
 
 ### Setup
 
@@ -105,12 +108,19 @@ npm install
 # 2. Get a GoRest access token
 #    Sign in at https://gorest.co.in/ with GitHub / Google / Microsoft.
 #    Generate a personal access token from the account dashboard
-#    (Account -> Access Tokens).
+#    (Account -> Access Tokens). This is your MAIN token.
+#
+#    OPTIONAL second token: the cross-account isolation spec
+#    (tests/api/users/users-isolation.spec.ts) needs a token from a
+#    SEPARATE account - sign in again with a DIFFERENT identity, create a
+#    second account, and generate its token. The rest of the suite runs
+#    without it.
 
-# 3. Configure your token
+# 3. Configure your token(s)
 cp .env.example .env
-#    Edit .env and set GOREST_TOKEN=<your-token>
-#    .env is gitignored - never commit your actual token.
+#    Edit .env and set GOREST_TOKEN_MAIN=<your-token>
+#    Optionally set GOREST_TOKEN_SUB=<second-account-token> for the isolation spec.
+#    .env is gitignored - never commit your actual tokens.
 ```
 
 ### Verify the setup
@@ -162,7 +172,7 @@ A GitHub Actions workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml
 
 **Required setup:**
 
-1. Add your token as a repository secret named `GOREST_TOKEN` (Settings -> Secrets and variables -> Actions -> New repository secret). The `authedRequest` fixture throws at load time if it is missing, so CI fails loudly with a clear message rather than emitting silent 401s.
+1. Add your main token as a repository secret named `GOREST_TOKEN_MAIN` (Settings -> Secrets and variables -> Actions -> New repository secret). The `authedRequest` fixture throws at load time if it is missing, so CI fails loudly with a clear message rather than emitting silent 401s. For the cross-account isolation spec, also add `GOREST_TOKEN_SUB` (a token from a second, separate GoRest account); the `test` job passes both to the suite.
 2. For the published report, enable GitHub Pages with Settings -> Pages -> Build and deployment -> Source: **GitHub Actions**. Until then the `deploy-report` job will fail; the `test` job is unaffected.
 
 ## API Call Budget
@@ -175,6 +185,7 @@ Total HTTP requests a full green run issues to GoRest, by spec. Updated as specs
 | Users | `users-validation.spec.ts` | 26 |
 | Users | `users-security.spec.ts` | 13 |
 | Users | `users-schema.spec.ts` | 6 |
+| Users | `users-isolation.spec.ts` | 17 |
 | Posts | `posts-crud.spec.ts` | 30 |
 | Posts | `posts-validation.spec.ts` | 39 |
 | Posts | `posts-security.spec.ts` | 17 |
@@ -187,15 +198,15 @@ Total HTTP requests a full green run issues to GoRest, by spec. Updated as specs
 | Sandbox | `force-status.spec.ts` | 10 |
 | Sandbox | `delay.spec.ts` | 6 |
 | Sandbox | `rate-limit.spec.ts` | 2 |
-| | **Total** | **367** |
+| | **Total** | **384** |
 
-Per-resource subtotals: Users **63**, Posts **86**, Comments **95**, Todos **105**, Sandbox **18**.
+Per-resource subtotals: Users **80**, Posts **86**, Comments **95**, Todos **105**, Sandbox **18**.
 
-The `rate-limit.spec.ts` count (**2**) covers only TC01 (authed) + TC02 (anon), which run in the default suite. Its TC03 burst is **excluded from the default run** (tagged `@ratelimit`) and issues **~400 additional authed requests** when run in isolation via `npm run test:ratelimit` - by design depleting the token's minute budget to provoke a real `429`. That ~400 is not part of the 367 default-suite total.
+The `rate-limit.spec.ts` count (**2**) covers only TC01 (authed) + TC02 (anon), which run in the default suite. Its TC03 burst is **excluded from the default run** (tagged `@ratelimit`) and issues **~400 additional authed requests** when run in isolation via `npm run test:ratelimit` - by design depleting the token's minute budget to provoke a real `429`. That ~400 is not part of the 384 default-suite total.
 
-**Rate-limit relevance:** GoRest's 300 req/min limit is **per access token**, so not every call above counts against your configured token. Of the 367 total, **30 are anonymous** (no `Authorization` header) and **27 use a deliberately-invalid bogus token** (`deadbeef`) - concentrated in the security specs' auth-gate negatives, the anonymous `GET` list in each CRUD spec, and the anonymous `force_status` / `delay` / rate-limit TCs in the sandbox specs. Neither group draws down the `.env` token's budget (anonymous carries no token; the bogus token is a different, invalid identity rejected at validation). So only **~310** requests count toward the token's 300/min - and spread across a run lasting well over a minute, with the bucket continuously refilling, a normal run never approaches the ceiling. (The `@ratelimit` burst is the deliberate exception, isolated out of the default run for exactly this reason.)
+**Rate-limit relevance:** GoRest's 300 req/min limit is **per access token**, so not every call above counts against your main token. Of the 384 total, **30 are anonymous** (no `Authorization` header) and **27 use a deliberately-invalid bogus token** (`deadbeef`) - concentrated in the security specs' auth-gate negatives, the anonymous `GET` list in each CRUD spec, and the anonymous `force_status` / `delay` / rate-limit TCs in the sandbox specs. Neither group draws down a real token's budget (anonymous carries no token; the bogus token is a different, invalid identity rejected at validation). A further **9** belong to the **second account's token** (`GOREST_TOKEN_SUB`, used by the isolation spec) - its own separate 300/min bucket. That leaves **~318** counting toward the MAIN token's 300/min - and spread across a run lasting well over a minute, with the bucket continuously refilling, a normal run never approaches the ceiling. (The `@ratelimit` burst is the deliberate exception, isolated out of the default run for exactly this reason.)
 
-**What's counted (in the 367 total):** every real HTTP request to GoRest - test-body requests, file-scope `beforeAll`/`afterAll` setup and teardown, `afterEach` cleanup `DELETE`s (including the second `DELETE` in idempotency/state-transition TCs, which returns 404 but is still a call), and parent-helper calls (`createParentUser` = 1 POST + 1 DELETE; `createParentPost` = 2 POSTs + 1 DELETE). Anonymous and bogus-token requests count too (they hit the server, returning 200/401/404). `newContext()` / `dispose()` are *not* counted - they create/close a client context without issuing a request.
+**What's counted (in the 384 total):** every real HTTP request to GoRest - test-body requests, file-scope `beforeAll`/`afterAll` setup and teardown, `afterEach` cleanup `DELETE`s (including the second `DELETE` in idempotency/state-transition TCs, which returns 404 but is still a call), and parent-helper calls (`createParentUser` = 1 POST + 1 DELETE; `createParentPost` = 2 POSTs + 1 DELETE). Anonymous and bogus-token requests count too (they hit the server, returning 200/401/404). `newContext()` / `dispose()` are *not* counted - they create/close a client context without issuing a request.
 
 **Assumptions:** a green run (config `retries: 1` only fires on failure), counted at `workers: 1`. Under parallel workers the file-scope `beforeAll`/`afterAll` hooks can run once per worker that picks up tests from a file, nudging the real total slightly higher.
 
@@ -228,12 +239,13 @@ Each GoRest resource gets a corresponding class in `services/` (the API equivale
 
 `fixtures/index.ts` exposes:
 
-- **`authedRequest`** - worker-scoped `APIRequestContext` pre-loaded with `Authorization: Bearer ${GOREST_TOKEN}`. Token is loaded from `.env` at config-load time; fixture fails loudly at module load if it's missing.
+- **`authedRequest`** - worker-scoped `APIRequestContext` pre-loaded with `Authorization: Bearer ${GOREST_TOKEN_MAIN}`. Token is loaded from `.env` at config-load time; fixture fails loudly at module load if it's missing.
+- **`authedRequestSub`** - same shape, bound to a SECOND account's token (`GOREST_TOKEN_SUB`). Used only by the cross-account isolation spec; checked lazily at fixture setup, so the rest of the suite runs without a second token.
 
 ### Helpers
 
 - **`helpers/data.ts`** - randomized data generators (`randomEmail`, `randomName`, `randomString`)
-- **`helpers/createParentUser.ts`** / **`createParentPost.ts`** - return `{ id, cleanup }` / `{ postId, cleanup }` closures for nested-resource setup; the cleanup closure cascade-deletes the whole subtree (per-token isolation makes this reliable)
+- **`helpers/createParentUser.ts`** / **`createParentPost.ts`** - return `{ id, cleanup }` / `{ postId, cleanup }` closures for nested-resource setup; the cleanup closure cascade-deletes the whole subtree (per-account isolation makes this reliable)
 
 ### Schemas
 
@@ -254,7 +266,8 @@ Highlights worth a look, each linked to the spec that demonstrates it:
 
 | Pattern | Where to see it |
 |---------|-----------------|
-| Per-token data isolation as a security property - anonymous writes on `/{id}` return `404` (not `401`) because the resource is invisible, not because of a classic auth gate | [users-security.spec.ts](tests/api/users/users-security.spec.ts) |
+| Per-account data isolation as a security property - anonymous writes on `/{id}` return `404` (not `401`) because the resource is invisible, not because of a classic auth gate | [users-security.spec.ts](tests/api/users/users-security.spec.ts) |
+| Cross-account isolation across a real account boundary - a second account's valid token gets `404` on `/{id}` and `200 []` on nested lists, proven with positive controls + post-write integrity re-reads | [users-isolation.spec.ts](tests/api/users/users-isolation.spec.ts) |
 | Two distinct auth-gate EP classes - no-token (`"Authentication failed"`) vs. invalid-token (`"Invalid token"`), pinned separately on every write verb | [posts-security.spec.ts](tests/api/posts/posts-security.spec.ts) |
 | Parameterised write-verb loop - one closure table drives the PUT/PATCH/DELETE auth-gate negatives without duplication | [users-security.spec.ts](tests/api/users/users-security.spec.ts) |
 | 5-point boundary value analysis on length bounds - both bounds, keeping points whose outcomes converge to document the boundary's shape | [posts-validation.spec.ts](tests/api/posts/posts-validation.spec.ts) |

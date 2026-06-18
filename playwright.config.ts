@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 import type { ReporterDescription } from "@playwright/test";
 import * as dotenv from "dotenv";
 
-// Load GOREST_TOKEN from .env at config load time. .env is gitignored;
+// Load GOREST_TOKEN_MAIN / GOREST_TOKEN_SUB from .env at config load time. .env is gitignored;
 // .env.example is committed. See CLAUDE.md for token acquisition steps.
 dotenv.config({ quiet: true });
 

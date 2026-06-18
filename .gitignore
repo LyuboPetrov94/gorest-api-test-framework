@@ -6,3 +6,4 @@ results.json
 playwright/.cache/
 .env
 TODO.md
+tests/api/_probe/

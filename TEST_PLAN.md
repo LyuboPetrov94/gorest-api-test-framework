@@ -6,7 +6,7 @@
 | Version | 1.0 |
 | Last updated | 2026-06-10 |
 | Author | repo owner (github.com/LyuboPetrov94) |
-| Status | Complete - all planned tests implemented and green (195 TCs) |
+| Status | Complete - all planned tests implemented and green (202 TCs) |
 
 This plan follows the IEEE 829 / ISTQB master-test-plan shape, adapted for a single-maintainer automation project. It cross-references the single sources of truth rather than duplicating them: run commands and the API call budget live in [README.md](README.md); conventions, the locked design decisions, and the discovered-behavior catalogue live in [tests/api/CLAUDE.md](tests/api/CLAUDE.md). Only the live coverage counts (Section 5) are maintained here.
 
@@ -76,13 +76,15 @@ Intended reader: a QA engineer or reviewer assessing the suite's scope, rigor, a
 
 ### Standard resources
 
-| Resource | CRUD | Validation | Security | Schema | Total |
-|---|---|---|---|---|---|
-| Users | ✅ 8 | ✅ 16 | ✅ 11 | ✅ 4 | 39 |
-| Posts | ✅ 11 | ✅ 19 | ✅ 13 | - | 43 |
-| Comments | ✅ 11 | ✅ 23 | ✅ 13 | - | 47 |
-| Todos | ✅ 15 | ✅ 19 | ✅ 13 | - | 47 |
-| **Subtotal** | **45** | **77** | **50** | **4** | **176** |
+| Resource | CRUD | Validation | Security | Schema | Isolation | Total |
+|---|---|---|---|---|---|---|
+| Users | ✅ 8 | ✅ 16 | ✅ 11 | ✅ 4 | ✅ 7 | 46 |
+| Posts | ✅ 11 | ✅ 19 | ✅ 13 | - | - | 43 |
+| Comments | ✅ 11 | ✅ 23 | ✅ 13 | - | - | 47 |
+| Todos | ✅ 15 | ✅ 19 | ✅ 13 | - | - | 47 |
+| **Subtotal** | **45** | **77** | **50** | **4** | **7** | **183** |
+
+The **Isolation** column is `users-isolation.spec.ts` (cross-account data isolation). Users is the single carrier - token scoping is a platform-wide property, not per-resource logic - and it requires a second account's token (`GOREST_TOKEN_SUB`).
 
 ### Sandbox bonus specs (GoRest-specific capabilities)
 
@@ -95,7 +97,7 @@ These exercise sandbox features that do not fit the standard CRUD/validation/sec
 | Rate-limit headers + 429 behavior | ✅ done | 3 |
 | **Subtotal** | | **19** |
 
-**Grand total: 195 TCs.** For per-TC detail, read the spec files directly; for the per-spec HTTP call budget, see the README's [API Call Budget](README.md#api-call-budget).
+**Grand total: 202 TCs.** For per-TC detail, read the spec files directly; for the per-spec HTTP call budget, see the README's [API Call Budget](README.md#api-call-budget).
 
 ## 6. Test Environment
 
@@ -104,9 +106,9 @@ These exercise sandbox features that do not fit the standard CRUD/validation/sec
 | Runner | Playwright v1.60 (API request context) |
 | Language | TypeScript 6.x (strict) |
 | Schema validation | zod v4.x |
-| Config loading | dotenv (loads `GOREST_TOKEN` at config-load time) |
+| Config loading | dotenv (loads `GOREST_TOKEN_MAIN` + `GOREST_TOKEN_SUB` at config-load time) |
 | Runtime | Node.js 20+ |
-| Token | Personal access token in `.env` (gitignored); see README [Getting Started](README.md#getting-started) |
+| Token | `GOREST_TOKEN_MAIN` (main account) + `GOREST_TOKEN_SUB` (second account, isolation spec only) in `.env` (gitignored); see README [Getting Started](README.md#getting-started) |
 | Parallelism | `fullyParallel: true`; `workers: 2` local / `1` on CI - tuned to stay under the 300 req/min token budget |
 | Retries | `retries: 1` (absorbs transient network flakiness) |
 
@@ -116,7 +118,7 @@ These exercise sandbox features that do not fit the standard CRUD/validation/sec
 
 **Entry criteria (before a spec is written or run):**
 
-- `GOREST_TOKEN` configured in `.env`.
+- `GOREST_TOKEN_MAIN` configured in `.env` (plus `GOREST_TOKEN_SUB` for the cross-account isolation spec).
 - `npm run typecheck` passes (no TypeScript errors).
 - The target endpoint has been probed and its observed behavior recorded.
 - For a new resource: the test-case list is proposed and approved (inspect-and-approve workflow, see [CLAUDE.md](CLAUDE.md)).

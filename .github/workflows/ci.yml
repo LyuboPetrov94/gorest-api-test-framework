@@ -18,7 +18,7 @@ jobs:
   lint:
     name: Static checks (lint, format, typecheck)
     runs-on: ubuntu-latest
-    # No GOREST_TOKEN needed - none of these touch the API. Runs on EVERY event,
+    # No tokens needed - none of these touch the API. Runs on EVERY event,
     # including Dependabot and fork PRs (which do not receive repository
     # secrets), so dependency bumps still get linted and type-checked. Parallel
     # with the test job.
@@ -47,18 +47,21 @@ jobs:
   test:
     name: API suite (typecheck + test:api)
     runs-on: ubuntu-latest
-    # The API suite needs GOREST_TOKEN. Dependabot PRs and fork PRs do NOT
-    # receive repository secrets, so skip there (the lint job still lints and
+    # The API suite needs GOREST_TOKEN_MAIN (and GOREST_TOKEN_SUB for the
+    # cross-account isolation spec). Dependabot PRs and fork PRs do NOT receive
+    # repository secrets, so skip there (the lint job still lints and
     # type-checks them); the full suite validates on every push to master.
     if: >-
       github.event_name != 'pull_request' ||
       (github.actor != 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository)
     env:
-      # Repository secret. Add via Settings -> Secrets and variables -> Actions.
-      # The authedRequest fixture throws at load if this is missing, so a
-      # missing secret fails loudly instead of emitting silent 401s.
-      GOREST_TOKEN: ${{ secrets.GOREST_TOKEN }}
+      # Repository secrets. Add via Settings -> Secrets and variables -> Actions.
+      # authedRequest throws at load if GOREST_TOKEN_MAIN is missing (fails
+      # loudly instead of silent 401s). GOREST_TOKEN_SUB is a token from a
+      # SECOND GoRest account, used only by the cross-account isolation spec.
+      GOREST_TOKEN_MAIN: ${{ secrets.GOREST_TOKEN_MAIN }}
+      GOREST_TOKEN_SUB: ${{ secrets.GOREST_TOKEN_SUB }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -133,7 +136,9 @@ jobs:
     # code defect, so a miss reports status without turning the build red.
     continue-on-error: true
     env:
-      GOREST_TOKEN: ${{ secrets.GOREST_TOKEN }}
+      # Rate-limit burst uses the MAIN token only (authedRequest); no second
+      # account is involved.
+      GOREST_TOKEN_MAIN: ${{ secrets.GOREST_TOKEN_MAIN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
